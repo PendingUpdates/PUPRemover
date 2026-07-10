@@ -9,18 +9,15 @@
 # Deploy via:  powershell.exe -ExecutionPolicy Bypass -File PUPRemover-S1.ps1
 # ===========================================================================
 
-# --- Shift Browser toggle -------------------------------------------------
-# Shift Browser is code-signed by the same publisher as, and installs to the
-# same paths as, a LEGITIMATE paid product — no test separates an unwanted
-# bundled install from a deliberate one. Leave $false for normal fleet use.
-# Set $true ONLY on the closed test system, or on machines where you have
-# already decided Shift Browser is unwanted. See README.md.
-$IncludeShiftBrowser = $false
-# --------------------------------------------------------------------------
-
+# This is a fleet-wide remover: all four PUPs are removed unconditionally.
+# NOTE on Shift Browser — it is code-signed by the same publisher as, and
+# installs to the same paths as, a legitimate paid product, so including it
+# here means a deliberately-installed Shift is also removed. That is the
+# intended behaviour for this tool. Matching is still install-path-anchored,
+# so unrelated software (redshift / openshift / ShiftN / Teams Shifts) is
+# never touched — only actual Shift Browser installs.
 $stamp   = Get-Date -Format 'yyyyMMdd_HHmmss'
-$targets = @('WaveBrowser', 'Blazer', 'CrystalPDF')
-if ($IncludeShiftBrowser) { $targets += 'ShiftBrowser' }
+$targets = @('WaveBrowser', 'Blazer', 'CrystalPDF', 'ShiftBrowser')
 
 Write-Host "PUPRemover — SentinelOne auto mode"
 Write-Host ("Run: {0}   Targets: {1}" -f $stamp, ($targets -join ', '))

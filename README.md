@@ -9,7 +9,7 @@ Windows:
 | **Wave Browser** | Chromium PUP; reinstalls via a `Wavesor SWUpdater` scheduled task. Covers the co-installed sibling **WebNavigatorBrowser**. |
 | **Blazer Browser** | `PUP.Optional.BlazerBrowser`; updater runs as `BlazerBrowserUpdateTask`. |
 | **Crystal PDF** | A **trojanized fake PDF editor / infostealer** (2025 Microsoft/CIS/GDATA writeups), not mere adware. Its own uninstaller is fake. |
-| **Shift Browser** | **Opt-in only** — see [the Shift Browser caveat](#the-shift-browser-caveat). |
+| **Shift Browser** | Chromium PUP. Removed by default like the others — read [the Shift Browser note](#the-shift-browser-note) for the one caveat you should know. |
 
 It sweeps and removes, per user profile: running **processes**, **scheduled
 tasks**, **install folders** (AppData / profile root), leftover
@@ -37,12 +37,9 @@ removals failed (reboot the endpoint and re-run). Under SentinelOne a
 non-zero exit surfaces as a failed run, so `2` flags machines that need
 attention — the intended signal.
 
-Targets Wave/Blazer/Crystal by default. To include Shift Browser (e.g. on the
-closed test system), set the toggle near the top of the file:
-
-```powershell
-$IncludeShiftBrowser = $true
-```
+Removes **all four** PUPs unconditionally — this is a fleet-wide remover, no
+arguments or toggles. (That includes Shift Browser; see
+[the Shift Browser note](#the-shift-browser-note).)
 
 ### `PUPRemover-Test.ps1` — interactive (closed-system testing)
 
@@ -77,29 +74,31 @@ writable location of:
 
 The CSV columns are `PUP, Category, Status, Item, Detail`.
 
-## The Shift Browser caveat
+## The Shift Browser note
 
-Shift Browser (Redbrick / **Shift Technologies, Inc.**) is **code-signed by
-the same publisher as, and installs to the same paths as, a legitimate paid
-workspace browser** (`%LOCALAPPDATA%\Shift\chromium\`, `shift.exe`,
-`shift_pwa_launcher.exe`, uninstall name "Shift"). What AV vendors flag as
-`PUP.Optional.ShiftBrowser` appears to be Redbrick's own installer, flagged
-for its misleading-ad distribution — Malwarebytes has shipped false positives
-on it.
+Shift Browser is removed by default alongside the other three. One thing to
+know going in: Shift Browser (Redbrick / **Shift Technologies, Inc.**) is
+**code-signed by the same publisher as, and installs to the same paths as, a
+legitimate paid workspace browser** (`%LOCALAPPDATA%\Shift\chromium\`,
+`shift.exe`, `shift_pwa_launcher.exe`, uninstall name "Shift"). What AV
+vendors flag as `PUP.Optional.ShiftBrowser` appears to be Redbrick's own
+installer, flagged for its misleading-ad distribution — Malwarebytes has
+shipped false positives on it.
 
 **No signature or path test can separate an unwanted bundled install from one
-a user chose.** So Shift is:
+a user chose**, so removing Shift by default means a *purposely-installed*
+Shift is removed too. That's the accepted trade-off for a fleet-wide remover —
+just be aware of it, and if any machine in scope might run the paid Shift on
+purpose, test there first.
 
-- **excluded from the default** S1 target (enable per-machine via the toggle);
-- matched only on **hard, install-path-anchored indicators** — the exact
-  path shape (`\Shift\chromium\`, `\ShiftData\`), exact process names, the
-  `Shift Technologies` publisher string, and the campaign's installer/dropper
-  filenames — **never a bare `shift`**. This keeps `redshift`, `openshift`,
-  `ShiftN`, `shift-qt`, and Teams `Shifts` safe.
-
-Only target Shift where you know it is unwanted. There is **no** product
-called "Shift Printer" — the printer/PDF angle is just the fake-download
-lure (`recipes_*.exe` / `pdf_*.exe`).
+What this does **not** put at risk is unrelated software: matching uses only
+**hard, install-path-anchored indicators** — the exact path shape
+(`\Shift\chromium\`, `\ShiftData\`), exact process names, the
+`Shift Technologies` publisher string, and the campaign's installer/dropper
+filenames — **never a bare `shift`**. So `redshift`, `openshift`, `ShiftN`,
+`shift-qt`, and Teams `Shifts` are never touched; only real Shift Browser
+installs are. There is **no** product called "Shift Printer" — the printer/PDF
+angle is just the fake-download lure (`recipes_*.exe` / `pdf_*.exe`).
 
 ## False-positive safety
 

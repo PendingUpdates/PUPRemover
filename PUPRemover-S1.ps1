@@ -111,18 +111,21 @@ $script:PupDefinitions = @(
         PostRemovalNote  = 'Crystal PDF is a credential-stealing trojan, not just adware. Treat this machine as compromised: reset the user''s passwords, revoke active browser sessions, and review sign-in logs.'
     },
     @{
-        # Shift Browser (Redbrick / Shift Technologies, Inc.). OPT-IN only —
-        # excluded from the S1 default target because it is code-signed by
-        # the same publisher as, and installs to the same paths as, a
-        # legitimate paid product. There is NO reliable on-disk or signature
-        # test that separates an unwanted bundled install from a deliberate
-        # one, so we never match a bare 'shift': every pattern is anchored to
-        # the exact install-path shape (\Shift\chromium\, \ShiftData\), the
-        # exact process names, the 'Shift Technologies' publisher string, or
-        # the campaign's specific installer/dropper filenames. That keeps
-        # redshift.exe, openshift, ShiftN, shift-qt, and Teams 'Shifts' safe.
-        # There is no attested product called "Shift Printer"; the printer/
-        # PDF angle is just the fake-download-button lure (recipes_*/pdf_*).
+        # Shift Browser (Redbrick / Shift Technologies, Inc.). Removed by
+        # default like the other three. Be aware: it is code-signed by the
+        # same publisher as, and installs to the same paths as, a legitimate
+        # paid product, so no on-disk or signature test separates an unwanted
+        # bundled install from a deliberate one — removing it by default means
+        # a purposely-installed Shift is removed too (an accepted trade-off
+        # for a fleet-wide remover). We still never match a bare 'shift':
+        # every pattern is anchored to the exact install-path shape
+        # (\Shift\chromium\, \ShiftData\), the exact process names, the
+        # 'Shift Technologies' publisher string, or the campaign's specific
+        # installer/dropper filenames. That keeps redshift.exe, openshift,
+        # ShiftN, shift-qt, and Teams 'Shifts' safe — only real Shift Browser
+        # installs are touched. There is no attested product called "Shift
+        # Printer"; the printer/PDF angle is just the fake-download-button
+        # lure (recipes_*/pdf_*).
         Name             = 'ShiftBrowser'
         ProcessPattern   = '(?i)^(shift|shift_pwa_launcher)$'
         MatchPattern     = '(?i)[\\/]shift[\\/]chromium[\\/]|[\\/]shiftdata([\\/]|$)|(?<![a-z])shift technologies|shift-v?[0-9][0-9.]*-(production\.)?web\.exe|^recipes(_[a-z0-9]+)?\.exe$|^pdf_[a-z0-9]+\.exe$'
@@ -140,7 +143,7 @@ $script:PupDefinitions = @(
             'HKLM:\SOFTWARE\WOW6432Node\Shift Technologies'
         )
         RegisteredAppNames  = @('Shift')
-        PostRemovalNote  = 'Shift Browser is code-signed by Shift Technologies, Inc. and shares its install paths with a legitimate paid product. You targeted it explicitly; if a user installed the paid Shift on purpose, this removed it. Verify on the closed test system before fleet rollout.'
+        PostRemovalNote  = 'Shift Browser is code-signed by Shift Technologies, Inc. and shares its install paths with a legitimate paid product; if a user installed the paid Shift on purpose, this removed it too. Test on the closed system before fleet rollout.'
     }
 )
 
@@ -219,7 +222,7 @@ function Invoke-PUPScan {
     [CmdletBinding()]
     param(
         [ValidateSet('WaveBrowser', 'Blazer', 'CrystalPDF', 'ShiftBrowser')]
-        [string[]]$Target = @('WaveBrowser', 'Blazer', 'CrystalPDF')
+        [string[]]$Target = @('WaveBrowser', 'Blazer', 'CrystalPDF', 'ShiftBrowser')
     )
 
     $ctx         = Get-PUPContext
@@ -588,18 +591,15 @@ function Export-PUPReport {
 # Deploy via:  powershell.exe -ExecutionPolicy Bypass -File PUPRemover-S1.ps1
 # ===========================================================================
 
-# --- Shift Browser toggle -------------------------------------------------
-# Shift Browser is code-signed by the same publisher as, and installs to the
-# same paths as, a LEGITIMATE paid product — no test separates an unwanted
-# bundled install from a deliberate one. Leave $false for normal fleet use.
-# Set $true ONLY on the closed test system, or on machines where you have
-# already decided Shift Browser is unwanted. See README.md.
-$IncludeShiftBrowser = $false
-# --------------------------------------------------------------------------
-
+# This is a fleet-wide remover: all four PUPs are removed unconditionally.
+# NOTE on Shift Browser — it is code-signed by the same publisher as, and
+# installs to the same paths as, a legitimate paid product, so including it
+# here means a deliberately-installed Shift is also removed. That is the
+# intended behaviour for this tool. Matching is still install-path-anchored,
+# so unrelated software (redshift / openshift / ShiftN / Teams Shifts) is
+# never touched — only actual Shift Browser installs.
 $stamp   = Get-Date -Format 'yyyyMMdd_HHmmss'
-$targets = @('WaveBrowser', 'Blazer', 'CrystalPDF')
-if ($IncludeShiftBrowser) { $targets += 'ShiftBrowser' }
+$targets = @('WaveBrowser', 'Blazer', 'CrystalPDF', 'ShiftBrowser')
 
 Write-Host "PUPRemover — SentinelOne auto mode"
 Write-Host ("Run: {0}   Targets: {1}" -f $stamp, ($targets -join ', '))
