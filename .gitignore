@@ -1,0 +1,5 @@
+# Runtime reports (written to ProgramData/TEMP normally; this catches the
+# current-directory fallback so logs are never committed).
+PUPRemover-logs/
+PUPRemover_*.csv
+PUPRemover_*.log
