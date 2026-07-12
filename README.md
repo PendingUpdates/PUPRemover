@@ -10,10 +10,6 @@ Windows:
 | **Blazer Browser** | `PUP.Optional.BlazerBrowser`; updater runs as `BlazerBrowserUpdateTask`. |
 | **Shift Browser** | Chromium PUP. Removed by default like the others — read [the Shift Browser note](#the-shift-browser-note) for the one caveat you should know. |
 
-> **Not covered: Crystal PDF.** It was dropped from this tool on purpose — it's
-> an infostealer that SentinelOne already detects and kills on sight, so a PUP
-> remover adds nothing. Leave it to the EDR.
-
 It sweeps and removes, per user profile: running **processes**, **scheduled
 tasks**, **install folders** (AppData / profile root), leftover
 **installers** in Downloads/Desktop, **registry** persistence (Run/RunOnce
