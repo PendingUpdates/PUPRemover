@@ -108,6 +108,24 @@ Assert-Match $shift 'InstallerPattern' 'redshift-setup.exe' $false 'Redshift ins
 Assert-Match $shift 'InstallerPattern' 'ShiftN-1.0-setup.exe' $false 'ShiftN installer'
 Assert-Match $shift 'InstallerPattern' 'my-shift-notes.exe' $false 'shift not at start'
 
+# --- RegNamePattern: browser-registration key names (from RegShot data) ---
+# Blazer registration keys that MatchPattern misses (bare 'Blazer' + hash):
+Assert-Match $blazer 'RegNamePattern' 'Blazer.VT36H75ACA5P33DTFPY7PHK46Q' $true 'StartMenuInternet\Blazer.<hash>'
+Assert-Match $blazer 'RegNamePattern' 'BlazerHTM.VT36H75ACA5P33DTFPY7PHK46Q' $true 'Classes\BlazerHTM.<hash>'
+Assert-Match $blazer 'RegNamePattern' 'BlazerPDF.VT36H75ACA5P33DTFPY7PHK46Q' $true 'Classes\BlazerPDF.<hash>'
+Assert-Match $blazer 'RegNamePattern' 'W~Blazer.VT36H75ACA5P33DTFPY7PHK46Q' $true 'Start tile W~Blazer.<hash>'
+Assert-Match $blazer 'RegNamePattern' 'Blazer' $true 'bare Blazer registration key'
+Assert-Match $blazer 'RegNamePattern' 'Trailblazer' $false 'Trailblazer'
+Assert-Match $blazer 'RegNamePattern' 'BlazeRush' $false 'BlazeRush'
+Assert-Match $blazer 'RegNamePattern' 'blazerush' $false 'blazerush lowercase'
+# Shift registration key names:
+Assert-Match $shift 'RegNamePattern' 'Shift' $true 'StartMenuInternet\Shift'
+Assert-Match $shift 'RegNamePattern' 'W~Shift.abc12345def' $true 'Start tile W~Shift.<hash>'
+Assert-Match $shift 'RegNamePattern' 'redshift' $false 'redshift'
+Assert-Match $shift 'RegNamePattern' 'openshift' $false 'openshift'
+Assert-Match $shift 'RegNamePattern' 'ShiftN' $false 'ShiftN'
+Assert-Match $shift 'RegNamePattern' 'Shifty' $false 'Shifty'
+
 # --- Crystal PDF fully removed from the project ---
 if ($PupDefinitions | Where-Object { $_.Name -eq 'CrystalPDF' }) {
     $failures++; Write-Host "  FAIL: CrystalPDF should no longer be a definition" -ForegroundColor Red

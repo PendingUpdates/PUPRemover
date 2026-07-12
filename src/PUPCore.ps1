@@ -66,6 +66,13 @@ $script:PupDefinitions = @(
         Name             = 'Blazer'
         ProcessPattern   = '(?i)^(new_)?blazer(?=browser|[\s\\/._-]|$)'
         MatchPattern     = '(?i)(?<![a-z])blazer[\s_-]*browser|(?<![a-z])blazer_(updater|installer)|[\\/]blazer[\\/](application|user data)|(?<![a-z])blazer\.exe$'
+        # RegNamePattern matches Blazer's browser-registration key NAMES, which
+        # MatchPattern deliberately doesn't (they're bare 'Blazer' + a random
+        # hash): Blazer.<hash>, BlazerHTM.<hash>, BlazerPDF.<hash>, and the
+        # W~Blazer.<hash> Start tile. Applied ONLY to the registration scan
+        # roots (StartMenuInternet / Classes / AppUserModelId / TileProperties).
+        # Anchored + hash-suffix-aware so Trailblazer / BlazeRush never match.
+        RegNamePattern   = '(?i)^(w~)?blazer(htm|html|pdf)?(\.[a-z0-9]{8,})?$'
         FolderNames      = @('Blazer', 'BlazerBrowser', 'Blazer Browser')
         ProfileRootFolderNames = @()
         MachineFolders   = @()
@@ -121,6 +128,11 @@ $script:PupDefinitions = @(
             'HKLM:\SOFTWARE\WOW6432Node\Shift Technologies'
         )
         RegisteredAppNames  = @('Shift')
+        # Shift registers Software\Clients\StartMenuInternet\Shift, which the
+        # install-path-anchored MatchPattern doesn't match. RegNamePattern
+        # catches the bare 'Shift' (and any Shift.<hash> / W~Shift.<hash>)
+        # registration key names. '^shift$' won't hit redshift/openshift/ShiftN.
+        RegNamePattern   = '(?i)^(w~)?shift(\.[a-z0-9]{8,})?$'
         PostRemovalNote  = 'Shift Browser is code-signed by Shift Technologies, Inc. and shares its install paths with a legitimate paid product; if a user installed the paid Shift on purpose, this removed it too. Test on the closed system before fleet rollout.'
     }
 )
@@ -385,15 +397,29 @@ function Invoke-PUPScan {
             }
         }
 
-        # 5d. Browser registration + leftover ProgId/COM classes (often hash-
-        #     suffixed, so matched by pattern). HKLM added when elevated.
+        # 5d. Browser registration + leftover ProgId/COM classes. These are
+        #     often bare-named or hash-suffixed (Blazer.<hash>, BlazerHTM.<hash>,
+        #     StartMenuInternet\Shift, W~<PUP>.<hash> Start tiles), so a child
+        #     name matches on MatchPattern OR the PUP's RegNamePattern. HKLM
+        #     added when elevated. Scan roots cover the registration/handler
+        #     spots each PUP touches. Tracing / ShimInclusionList mop up the
+        #     benign per-exe leftovers the installers create.
+        $regScanRoots = @(
+            'Software\Clients\StartMenuInternet',
+            'Software\Classes',
+            'Software\Classes\AppUserModelId',
+            'Software\Microsoft\Windows\CurrentVersion\Start\TileProperties',
+            'Software\Microsoft\Tracing',
+            'Software\Microsoft\MediaPlayer\ShimInclusionList'
+        )
         $regHives = @($userHives)
         if ($isAdmin) { $regHives += 'HKLM:' }
         foreach ($hive in $regHives) {
-            foreach ($scanRoot in @('Software\Clients\StartMenuInternet', 'Software\Classes')) {
+            foreach ($scanRoot in $regScanRoots) {
                 $rootPath = Join-Path $hive $scanRoot
                 foreach ($sub in @(Get-ChildItem -LiteralPath $rootPath -ErrorAction SilentlyContinue |
-                                   Where-Object { $_.PSChildName -match $pup.MatchPattern })) {
+                                   Where-Object { $_.PSChildName -match $pup.MatchPattern -or
+                                                  ($pup.RegNamePattern -and $_.PSChildName -match $pup.RegNamePattern) })) {
                     $subPath = $sub.PSPath
                     if (-not $seenReg.Add((ConvertTo-CanonicalRegPath $subPath))) { continue }
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'RegistryKey' -Phase 3 `
