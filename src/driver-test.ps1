@@ -59,7 +59,9 @@ function Invoke-RemovalWithReport {
 
     foreach ($note in (Get-PUPPostRemovalNotes -Finding $Finding)) { Write-Warning $note }
 
-    $report = Export-PUPReport -Finding $Finding -Stamp $Stamp
+    # Interactive test runs drop their report in the running user's Downloads.
+    $downloads = Join-Path $env:USERPROFILE 'Downloads'
+    $report = Export-PUPReport -Finding $Finding -Stamp $Stamp -Directory $downloads
     if ($report.Count -gt 0) { Write-Host ("`n  Report written: {0}" -f ($report -join '  ;  ')) -ForegroundColor DarkGray }
 
     $removed = @($Finding | Where-Object { $_.Status -eq 'Removed' }).Count

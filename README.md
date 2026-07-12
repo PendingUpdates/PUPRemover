@@ -65,14 +65,15 @@ per-item success/failure and writes a CSV + log.
 
 ## Reports
 
-Both scripts write `PUPRemover_<timestamp>.csv` and `.log` to the first
-writable location of:
+Both scripts write `PUPRemover_<timestamp>.csv` and `.log`. The CSV columns
+are `PUP, Category, Status, Item, Detail`.
 
-1. `%ProgramData%\PUPRemover\Logs`
-2. `%TEMP%\PUPRemover`
-3. `.\PUPRemover-logs` (current directory)
-
-The CSV columns are `PUP, Category, Status, Item, Detail`.
+- **`PUPRemover-Test.ps1`** writes to the **running user's `Downloads`**
+  folder (easy to grab during testing).
+- **`PUPRemover-S1.ps1`** writes to the first writable of
+  `%ProgramData%\PUPRemover\Logs`, then `%TEMP%\PUPRemover`, then
+  `.\PUPRemover-logs` — because under SYSTEM there is no user Downloads
+  folder, and SentinelOne collects the console output regardless.
 
 ## The Shift Browser note
 

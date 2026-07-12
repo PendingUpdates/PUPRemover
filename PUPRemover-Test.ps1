@@ -443,25 +443,30 @@ function Invoke-PUPScan {
         "$env:ProgramData\Microsoft\Windows\Start Menu"
     ) | Where-Object { Test-Path -LiteralPath $_ }
 
+    # NOTE: this local MUST NOT be named $target — that aliases the
+    # [string[]]$Target parameter (PowerShell variable names are
+    # case-insensitive), and on Windows PowerShell 5.1 the type-constrained
+    # reassignment leaves it holding the PUP-name array, so EVERY shortcut
+    # then "matches" and gets deleted. Use a distinct name.
     $wsShell = $null
     try { $wsShell = New-Object -ComObject WScript.Shell } catch { }
     foreach ($root in $shortcutRoots) {
         $links = @(Get-ChildItem -LiteralPath $root -Filter '*.lnk' -Recurse -Force -ErrorAction SilentlyContinue)
         foreach ($pup in $activePups) {
             foreach ($lnk in $links) {
-                $target = ''
+                $lnkTarget = ''
                 if ($wsShell) {
-                    try { $target = $wsShell.CreateShortcut($lnk.FullName).TargetPath } catch { }
+                    try { $lnkTarget = [string]$wsShell.CreateShortcut($lnk.FullName).TargetPath } catch { }
                 }
                 $nameHit   = $lnk.Name -match $pup.MatchPattern
-                $targetHit = $target -and ($target -match $pup.MatchPattern)
+                $targetHit = $lnkTarget -and ($lnkTarget -match $pup.MatchPattern)
                 # Remove when the resolved target is a PUP path, or when the name
                 # matches and the target can't be read. A matching name with a
                 # clean readable target is left alone.
-                if (-not ($targetHit -or ($nameHit -and -not $target))) { continue }
+                if (-not ($targetHit -or ($nameHit -and -not $lnkTarget))) { continue }
                 $lnkPath = $lnk.FullName
                 $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Shortcut' -Phase 3 `
-                    -Item "$lnkPath -> $target" `
+                    -Item "$lnkPath -> $lnkTarget" `
                     -RemoveAction { Remove-Item -LiteralPath $lnkPath -Force -ErrorAction Stop }.GetNewClosure()))
             }
         }
@@ -548,13 +553,18 @@ function Get-PUPPostRemovalNotes {
 }
 
 # Write a timestamped CSV + text log. Returns the file paths written.
+# -Directory is a preferred output folder (e.g. the interactive tester passes
+# the current user's Downloads); it is tried first, then the machine defaults.
 function Export-PUPReport {
     param(
         [object[]]$Finding,
-        [string]$Stamp   # caller supplies a timestamp string (e.g. yyyyMMdd_HHmmss)
+        [string]$Stamp,      # caller supplies a timestamp string (e.g. yyyyMMdd_HHmmss)
+        [string]$Directory   # optional preferred output folder, tried first
     )
     if (-not $Stamp) { $Stamp = (Get-Date -Format 'yyyyMMdd_HHmmss') }
-    $candidates = @("$env:ProgramData\PUPRemover\Logs", "$env:TEMP\PUPRemover", (Join-Path (Get-Location) 'PUPRemover-logs'))
+    $candidates = @()
+    if ($Directory) { $candidates += $Directory }
+    $candidates += @("$env:ProgramData\PUPRemover\Logs", "$env:TEMP\PUPRemover", (Join-Path (Get-Location) 'PUPRemover-logs'))
     $logDir = $null
     foreach ($c in $candidates) {
         if (-not $c) { continue }
@@ -641,7 +651,9 @@ function Invoke-RemovalWithReport {
 
     foreach ($note in (Get-PUPPostRemovalNotes -Finding $Finding)) { Write-Warning $note }
 
-    $report = Export-PUPReport -Finding $Finding -Stamp $Stamp
+    # Interactive test runs drop their report in the running user's Downloads.
+    $downloads = Join-Path $env:USERPROFILE 'Downloads'
+    $report = Export-PUPReport -Finding $Finding -Stamp $Stamp -Directory $downloads
     if ($report.Count -gt 0) { Write-Host ("`n  Report written: {0}" -f ($report -join '  ;  ')) -ForegroundColor DarkGray }
 
     $removed = @($Finding | Where-Object { $_.Status -eq 'Removed' }).Count
