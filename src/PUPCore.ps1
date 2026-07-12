@@ -409,21 +409,39 @@ function Invoke-PUPScan {
         }
     }
 
-    # --- 5e. MSIX/Store packages (a 'Blazer Browser' Store listing exists) ---
-    $appxPackages = @(
-        if ($isAdmin) { Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue }
-        else          { Get-AppxPackage -ErrorAction SilentlyContinue }
-    )
-    $removeAppxCmd = Get-Command Remove-AppxPackage -ErrorAction SilentlyContinue
-    $appxAllUsers  = $isAdmin -and $removeAppxCmd -and $removeAppxCmd.Parameters.ContainsKey('AllUsers')
-    foreach ($pup in $activePups) {
-        foreach ($pkg in @($appxPackages | Where-Object { $_.Name -match $pup.MatchPattern })) {
-            $pkgFullName = $pkg.PackageFullName
-            $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'AppxPackage' -Phase 3 -Item $pkgFullName `
-                -RemoveAction {
-                    if ($appxAllUsers) { Remove-AppxPackage -Package $pkgFullName -AllUsers -ErrorAction Stop }
-                    else               { Remove-AppxPackage -Package $pkgFullName -ErrorAction Stop }
-                }.GetNewClosure()))
+    # --- 5e. MSIX/Store packages ---
+    # Remove-AppxPackage is the ONLY capability in this tool that can actually
+    # UNINSTALL an installed app, so it is deliberately conservative:
+    #   * it acts ONLY on packages whose Name matches a PUP's explicit
+    #     AppxPattern. No PUP defines one today (the reported 'Blazer Browser'
+    #     Store listing was never confirmed to a package identity), so this
+    #     block is a no-op — it cannot uninstall anything until a confirmed
+    #     package name is added; and
+    #   * even then it hard-excludes Microsoft / first-party / OS / framework
+    #     packages, so browsers such as Microsoft Edge and any Store/system
+    #     app can never be removed here.
+    $appxPups = @($activePups | Where-Object { $_.AppxPattern })
+    if ($appxPups.Count -gt 0) {
+        $firstParty = '(?i)^(microsoft|windows|microsoftwindows|nvidia|realtek|intel|dell|hp|lenovo)\.'
+        $appxPackages = @(
+            if ($isAdmin) { Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue }
+            else          { Get-AppxPackage -ErrorAction SilentlyContinue }
+        ) | Where-Object {
+            $_.Name -notmatch $firstParty -and
+            $_.Publisher -notmatch 'CN=Microsoft' -and
+            -not $_.IsFramework -and $_.SignatureKind -ne 'System'
+        }
+        $removeAppxCmd = Get-Command Remove-AppxPackage -ErrorAction SilentlyContinue
+        $appxAllUsers  = $isAdmin -and $removeAppxCmd -and $removeAppxCmd.Parameters.ContainsKey('AllUsers')
+        foreach ($pup in $appxPups) {
+            foreach ($pkg in @($appxPackages | Where-Object { $_.Name -match $pup.AppxPattern })) {
+                $pkgFullName = $pkg.PackageFullName
+                $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'AppxPackage' -Phase 3 -Item $pkgFullName `
+                    -RemoveAction {
+                        if ($appxAllUsers) { Remove-AppxPackage -Package $pkgFullName -AllUsers -ErrorAction Stop }
+                        else               { Remove-AppxPackage -Package $pkgFullName -ErrorAction Stop }
+                    }.GetNewClosure()))
+            }
         }
     }
 
@@ -438,11 +456,18 @@ function Invoke-PUPScan {
         "$env:ProgramData\Microsoft\Windows\Start Menu"
     ) | Where-Object { Test-Path -LiteralPath $_ }
 
+    # A shortcut is removed ONLY when its RESOLVED TARGET points at a PUP path
+    # (e.g. into \Wavesor Software\ or \Shift\chromium\). We never delete a
+    # shortcut on a name match alone — matching by name is what let the tool
+    # touch shortcuts it didn't own. If the target can't be resolved, the
+    # shortcut is left in place (a dead PUP link is harmless once the real
+    # files/tasks/registry are gone).
+    #
     # NOTE: this local MUST NOT be named $target — that aliases the
     # [string[]]$Target parameter (PowerShell variable names are
     # case-insensitive), and on Windows PowerShell 5.1 the type-constrained
     # reassignment leaves it holding the PUP-name array, so EVERY shortcut
-    # then "matches" and gets deleted. Use a distinct name.
+    # would "match". Use a distinct name.
     $wsShell = $null
     try { $wsShell = New-Object -ComObject WScript.Shell } catch { }
     foreach ($root in $shortcutRoots) {
@@ -453,12 +478,7 @@ function Invoke-PUPScan {
                 if ($wsShell) {
                     try { $lnkTarget = [string]$wsShell.CreateShortcut($lnk.FullName).TargetPath } catch { }
                 }
-                $nameHit   = $lnk.Name -match $pup.MatchPattern
-                $targetHit = $lnkTarget -and ($lnkTarget -match $pup.MatchPattern)
-                # Remove when the resolved target is a PUP path, or when the name
-                # matches and the target can't be read. A matching name with a
-                # clean readable target is left alone.
-                if (-not ($targetHit -or ($nameHit -and -not $lnkTarget))) { continue }
+                if (-not ($lnkTarget -and ($lnkTarget -match $pup.MatchPattern))) { continue }
                 $lnkPath = $lnk.FullName
                 $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Shortcut' -Phase 3 `
                     -Item "$lnkPath -> $lnkTarget" `

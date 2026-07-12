@@ -15,9 +15,16 @@ It sweeps and removes, per user profile: running **processes**, **scheduled
 tasks**, **install folders** (AppData / profile root), leftover
 **installers** in Downloads/Desktop, **registry** persistence (Run/RunOnce
 values, vendor keys, uninstall entries, browser registration,
-ProgId/COM classes), **shortcuts**, and **MSIX/Store packages**. Every run
-reports the artifacts found (with their paths, registry keys, and tasks) and
-the per-item removal result, and writes a timestamped CSV + log.
+ProgId/COM classes), and **shortcuts** (removed only when their resolved
+target points at a PUP path). Every run reports the artifacts found (with
+their paths, registry keys, and tasks) and the per-item removal result, and
+writes a timestamped CSV + log.
+
+The tool deletes PUP files, tasks, and registry entries. The one thing it
+does **not** do by default is uninstall MSIX/Store apps: `Remove-AppxPackage`
+is gated behind an explicit per-PUP package identity (none set today) and
+hard-excludes Microsoft / first-party / OS packages, so it can never remove a
+browser such as **Microsoft Edge** or any Store/system app.
 
 ## Two ready-to-run scripts
 
@@ -112,7 +119,9 @@ Crystal Reports, Redshift, OpenShift, ShiftN, and ordinary user files.
 Additional safeguards: folder names are matched **exactly** (no filesystem
 wildcards); a user's own `C:\Users\<x>\Blazer` folder is never touched;
 `Temp\crys` is removed only when the Crystal payload is inside it; shortcuts
-are judged by their **resolved target**; and match blobs are `|`-joined so a
+are removed **only** when their resolved target points at a PUP path (never
+on name alone); MSIX/Store uninstall is disabled by default and can never
+touch Microsoft/first-party packages; and match blobs are `|`-joined so a
 pattern can't span two fields.
 
 Run elevated/SYSTEM to cover every profile and all loaded `HKEY_USERS`
