@@ -11,17 +11,18 @@
 # functions — it performs no scanning or removal on its own. The front-ends
 # (PUPRemover-S1.ps1, PUPRemover-Test.ps1) drive it.
 #
-# Detection targets: WaveBrowser (+ sibling WebNavigatorBrowser), Blazer,
-# Crystal PDF, and (opt-in) Shift Browser.
+# Detection targets: WaveBrowser (+ sibling WebNavigatorBrowser), Blazer, and
+# Shift Browser. (Crystal PDF was intentionally dropped — it's an infostealer
+# that SentinelOne already detects and kills, so it doesn't belong here.)
 #
 # Matching philosophy: MatchPattern is the single source of truth for "does
 # this string belong to the PUP" and is applied to scheduled-task blobs,
 # registry names/values, uninstall entries, installer filenames, process
 # paths, and shortcut targets. Patterns are deliberately narrow so legitimate
 # software never matches (Waves MaxxAudio, Wavebox, Siemens WinCC
-# WebNavigator, BlazeRush, Trailblazer, CrystalDiskInfo, SAP Crystal Reports,
-# redshift/openshift/ShiftN, Teams Shifts, ...). Folder names are matched
-# EXACTLY under known roots — no wildcards touch the filesystem.
+# WebNavigator, BlazeRush, Trailblazer, redshift/openshift/ShiftN, Teams
+# Shifts, ...). Folder names are matched EXACTLY under known roots — no
+# wildcards touch the filesystem.
 # ===========================================================================
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -86,33 +87,8 @@ $script:PupDefinitions = @(
         RegisteredAppNames  = @('Blazer')
     },
     @{
-        # Crystal PDF is worse than a bundler PUP: 2025 vendor writeups
-        # (Microsoft Defender Experts, CIS, GDATA) describe it as a
-        # trojanized fake PDF editor / infostealer. Its own uninstaller is
-        # fake — it removes shortcuts and uninstall keys but leaves the
-        # payload (%LOCALAPPDATA%\Temp\crys\CrystalPDF.exe) and its
-        # 'Crystal_updater' scheduled task running.
-        Name             = 'CrystalPDF'
-        ProcessPattern   = '(?i)^crystal[\s_-]*pdf'
-        MatchPattern     = '(?i)crystal[\s_-]*pdf|(?<![a-z])crystal_updater(?![a-z])'  # 'pdf' token required — skips Crystal Reports / CrystalDiskInfo
-        FolderNames      = @('CrystalPDF', 'Crystal PDF')
-        # Temp\crys is only removed when the attested payload is inside it —
-        # the folder name alone is too generic to delete blind.
-        GuardedFolders   = @(@{ Path = 'Temp\crys'; Marker = 'CrystalPDF*.exe' })
-        ProfileRootFolderNames = @()
-        MachineFolders   = @()
-        RegistrySubKeys  = @(
-            'Software\CrystalPDF',
-            'Software\Crystal PDF',
-            'Software\Microsoft\Windows\CurrentVersion\Uninstall\CrystalPDF',
-            'Software\Microsoft\Windows\CurrentVersion\Uninstall\Crystal PDF'
-        )
-        MachineRegistryKeys = @()
-        PostRemovalNote  = 'Crystal PDF is a credential-stealing trojan, not just adware. Treat this machine as compromised: reset the user''s passwords, revoke active browser sessions, and review sign-in logs.'
-    },
-    @{
         # Shift Browser (Redbrick / Shift Technologies, Inc.). Removed by
-        # default like the other three. Be aware: it is code-signed by the
+        # default like the others. Be aware: it is code-signed by the
         # same publisher as, and installs to the same paths as, a legitimate
         # paid product, so no on-disk or signature test separates an unwanted
         # bundled install from a deliberate one — removing it by default means
@@ -129,6 +105,13 @@ $script:PupDefinitions = @(
         Name             = 'ShiftBrowser'
         ProcessPattern   = '(?i)^(shift|shift_pwa_launcher)$'
         MatchPattern     = '(?i)[\\/]shift[\\/]chromium[\\/]|[\\/]shiftdata([\\/]|$)|(?<![a-z])shift technologies|shift-v?[0-9][0-9.]*-(production\.)?web\.exe|^recipes(_[a-z0-9]+)?\.exe$|^pdf_[a-z0-9]+\.exe$'
+        # InstallerPattern is applied ONLY to .exe/.msi filenames in Downloads
+        # and on the Desktop (never to process paths / tasks / registry), so it
+        # can be broader: any 'Shift-...' or 'Shift_<hash>...' installer, e.g.
+        # Shift-127.4.0-Production.Web.exe, shift-v127.0.0-web.exe, or
+        # Shift_qf3xyw.exe. Anchored at the start, so redshift-*/ShiftN-* don't
+        # match.
+        InstallerPattern = '(?i)^shift[-_].+\.(exe|msi)$'
         FolderNames      = @('Shift', 'ShiftData')
         ProfileRootFolderNames = @()
         MachineFolders   = @()
@@ -214,6 +197,20 @@ function New-PUPFinding {
     }
 }
 
+# Normalize a registry path to a comparable identity so the same key found by
+# two different sweeps (the vendor-key list uses an 'HKCU:\...' drive path; the
+# uninstall/registration scans use a provider PSPath) de-dupes to one finding.
+function ConvertTo-CanonicalRegPath {
+    param([string]$Path)
+    $p = $Path -replace '(?i)^Microsoft\.PowerShell\.Core\\Registry::', ''
+    $p = $p -replace '(?i)^Registry::', ''
+    $p = $p -replace '(?i)^HKEY_CURRENT_USER', 'HKCU:'
+    $p = $p -replace '(?i)^HKEY_LOCAL_MACHINE', 'HKLM:'
+    $p = $p -replace '(?i)^HKEY_USERS', 'HKU:'
+    $p = $p -replace '(?i)^HKEY_CLASSES_ROOT', 'HKCR:'
+    return $p.TrimEnd('\').ToLowerInvariant()
+}
+
 # ---------------------------------------------------------------------------
 # Invoke-PUPScan — detect (never remove). Returns an array of findings, each
 # carrying a RemoveAction closure that Invoke-PUPRemoval can later execute.
@@ -221,8 +218,8 @@ function New-PUPFinding {
 function Invoke-PUPScan {
     [CmdletBinding()]
     param(
-        [ValidateSet('WaveBrowser', 'Blazer', 'CrystalPDF', 'ShiftBrowser')]
-        [string[]]$Target = @('WaveBrowser', 'Blazer', 'CrystalPDF', 'ShiftBrowser')
+        [ValidateSet('WaveBrowser', 'Blazer', 'ShiftBrowser')]
+        [string[]]$Target = @('WaveBrowser', 'Blazer', 'ShiftBrowser')
     )
 
     $ctx         = Get-PUPContext
@@ -235,6 +232,9 @@ function Invoke-PUPScan {
 
     $activePups = @($script:PupDefinitions | Where-Object { $_.Name -in $Target })
     $findings   = New-Object System.Collections.Generic.List[object]
+    # Tracks registry keys already queued for removal so one key caught by both
+    # the vendor-key list and the uninstall/registration scans is listed once.
+    $seenReg    = New-Object 'System.Collections.Generic.HashSet[string]'
 
     # --- 1. Processes (by name or executable path) ---
     $allProcs = @(Get-Process -ErrorAction SilentlyContinue | Select-Object Id, Name, Path)
@@ -286,8 +286,9 @@ function Invoke-PUPScan {
                 $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Folder' -Phase 3 -Item $path `
                     -RemoveAction { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
             }
-            # Guarded folders: generic names removed only when the PUP's marker
-            # file is actually inside (e.g. Temp\crys must hold CrystalPDF*.exe).
+            # Guarded folders: a generically-named folder under AppData\Local is
+            # removed only when the PUP's marker file is actually inside it. (No
+            # current PUP defines GuardedFolders; kept as a general capability.)
             foreach ($guard in @($pup.GuardedFolders)) {
                 if (-not $guard) { continue }
                 $path = Join-Path (Join-Path $userDir 'AppData\Local') $guard.Path
@@ -316,7 +317,9 @@ function Invoke-PUPScan {
             $installers = @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue |
                 Where-Object { $_.Extension -in @('.exe', '.msi') })
             foreach ($pup in $activePups) {
-                foreach ($f in @($installers | Where-Object { $_.Name -match $pup.MatchPattern })) {
+                foreach ($f in @($installers | Where-Object {
+                            $_.Name -match $pup.MatchPattern -or
+                            ($pup.InstallerPattern -and $_.Name -match $pup.InstallerPattern) })) {
                     $filePath = $f.FullName
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Installer' -Phase 3 -Item $filePath `
                         -RemoveAction { Remove-Item -LiteralPath $filePath -Force -ErrorAction Stop }.GetNewClosure()))
@@ -336,6 +339,7 @@ function Invoke-PUPScan {
             $pup.MachineRegistryKeys
         )
         foreach ($keyPath in @($vendorKeys | Where-Object { $_ -and (Test-Path -LiteralPath $_) })) {
+            if (-not $seenReg.Add((ConvertTo-CanonicalRegPath $keyPath))) { continue }
             $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'RegistryKey' -Phase 3 -Item $keyPath `
                 -RemoveAction { Remove-Item -LiteralPath $keyPath -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
         }
@@ -378,6 +382,7 @@ function Invoke-PUPScan {
                 $blob = @($entry.PSChildName, $props.DisplayName, $props.Publisher, $props.InstallLocation) -join ' | '
                 if ($blob -match $pup.MatchPattern) {
                     $entryPath = $entry.PSPath
+                    if (-not $seenReg.Add((ConvertTo-CanonicalRegPath $entryPath))) { continue }
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'UninstallEntry' -Phase 3 `
                         -Item ("{0} ({1})" -f $entry.PSChildName, $props.DisplayName) `
                         -RemoveAction { Remove-Item -LiteralPath $entryPath -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
@@ -395,6 +400,7 @@ function Invoke-PUPScan {
                 foreach ($sub in @(Get-ChildItem -LiteralPath $rootPath -ErrorAction SilentlyContinue |
                                    Where-Object { $_.PSChildName -match $pup.MatchPattern })) {
                     $subPath = $sub.PSPath
+                    if (-not $seenReg.Add((ConvertTo-CanonicalRegPath $subPath))) { continue }
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'RegistryKey' -Phase 3 `
                         -Item ($subPath -replace '^.*::', '') `
                         -RemoveAction { Remove-Item -LiteralPath $subPath -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
@@ -524,8 +530,19 @@ function Invoke-PUPRemoval {
             $f.Detail = ''
         }
         catch {
-            $f.Status = 'Failed'
-            $f.Detail = $_.Exception.Message
+            # "Already gone" is success, not failure — a second finding for the
+            # same key (e.g. the vendor-key list and the uninstall-entry scan
+            # both catch one Uninstall\<PUP> key), a parent removal that took a
+            # child with it, or a process that exited before we killed it. Only
+            # genuine errors (locked file, access denied) count as failures.
+            if ($_.CategoryInfo.Category -eq 'ObjectNotFound') {
+                $f.Status = 'Removed'
+                $f.Detail = '(already gone)'
+            }
+            else {
+                $f.Status = 'Failed'
+                $f.Detail = $_.Exception.Message
+            }
         }
     }
     return $Finding
@@ -621,7 +638,7 @@ function Export-PUPReport {
 # Deploy via:  powershell.exe -ExecutionPolicy Bypass -File PUPRemover-S1.ps1
 # ===========================================================================
 
-# This is a fleet-wide remover: all four PUPs are removed unconditionally.
+# This is a fleet-wide remover: all targeted PUPs are removed unconditionally.
 # NOTE on Shift Browser — it is code-signed by the same publisher as, and
 # installs to the same paths as, a legitimate paid product, so including it
 # here means a deliberately-installed Shift is also removed. That is the
@@ -629,7 +646,7 @@ function Export-PUPReport {
 # so unrelated software (redshift / openshift / ShiftN / Teams Shifts) is
 # never touched — only actual Shift Browser installs.
 $stamp   = Get-Date -Format 'yyyyMMdd_HHmmss'
-$targets = @('WaveBrowser', 'Blazer', 'CrystalPDF', 'ShiftBrowser')
+$targets = @('WaveBrowser', 'Blazer', 'ShiftBrowser')
 
 Write-Host "PUPRemover — SentinelOne auto mode"
 Write-Host ("Run: {0}   Targets: {1}" -f $stamp, ($targets -join ', '))

@@ -9,7 +9,6 @@ Write-Host ("DEFS: loaded {0} PUP definitions" -f $PupDefinitions.Count) -Foregr
 
 $wave    = $PupDefinitions | Where-Object { $_.Name -eq 'WaveBrowser' }
 $blazer  = $PupDefinitions | Where-Object { $_.Name -eq 'Blazer' }
-$crystal = $PupDefinitions | Where-Object { $_.Name -eq 'CrystalPDF' }
 $shift   = $PupDefinitions | Where-Object { $_.Name -eq 'ShiftBrowser' }
 
 $failures = 0
@@ -76,23 +75,6 @@ Assert-Match $blazer 'MatchPattern' 'Portland Trail Blazers wallpaper.jpg' $fals
 Assert-Match $blazer 'MatchPattern' 'C:\Users\bob\Blazer\viewer.exe' $false 'user-owned Blazer folder exe'
 Assert-Match $blazer 'MatchPattern' 'Chevy Blazer photos.lnk' $false 'user shortcut'
 
-# --- CrystalPDF: must match ---
-Assert-Match $crystal 'MatchPattern' 'CrystalPDF' $true 'product name'
-Assert-Match $crystal 'MatchPattern' 'Crystal PDF' $true 'display name'
-Assert-Match $crystal 'MatchPattern' 'Crystal_updater' $true 'persistence task'
-Assert-Match $crystal 'MatchPattern' 'CrystalPDF.exe update' $true 'task action'
-Assert-Match $crystal 'ProcessPattern' 'CrystalPDF' $true 'process'
-Assert-Match $crystal 'ProcessPattern' 'Crystal PDF' $true 'decoy process'
-# --- CrystalPDF: must NOT match ---
-Assert-Match $crystal 'MatchPattern' 'CrystalDiskInfo' $false 'disk tool'
-Assert-Match $crystal 'MatchPattern' 'CrystalDiskMark' $false 'benchmark'
-Assert-Match $crystal 'MatchPattern' 'SAP Crystal Reports runtime engine' $false 'SAP runtime'
-Assert-Match $crystal 'MatchPattern' 'Crystal Reports Cache Server' $false 'SAP service'
-Assert-Match $crystal 'MatchPattern' 'Pokemon Crystal.gbc' $false 'user ROM'
-Assert-Match $crystal 'MatchPattern' 'crystal.exe' $false 'Crystal language'
-Assert-Match $crystal 'MatchPattern' 'MyCrystal_updater_backup' $false 'user backup task'
-Assert-Match $crystal 'MatchPattern' 'SuperCrystal | PDF Tools AG' $false 'blob field spanning'
-
 # --- ShiftBrowser: must match (install-path anchored) ---
 Assert-Match $shift 'ProcessPattern' 'shift' $true 'shift.exe'
 Assert-Match $shift 'ProcessPattern' 'shift_pwa_launcher' $true 'pwa launcher'
@@ -117,6 +99,41 @@ Assert-Match $shift 'MatchPattern' 'night shift.mp3' $false 'user media'
 Assert-Match $shift 'MatchPattern' 'makeshift.exe' $false 'unrelated exe'
 Assert-Match $shift 'MatchPattern' 'pdf.exe' $false 'bare pdf.exe'
 Assert-Match $shift 'MatchPattern' 'RedshiftODBC | Amazon | C:\redshift' $false 'Amazon Redshift blob'
+
+# --- ShiftBrowser InstallerPattern (Downloads/Desktop .exe/.msi only) ---
+Assert-Match $shift 'InstallerPattern' 'Shift_qf3xyw.exe' $true 'Shift_<hash> installer'
+Assert-Match $shift 'InstallerPattern' 'Shift-127.4.0-Production.Web.exe' $true 'versioned installer'
+Assert-Match $shift 'InstallerPattern' 'shift-v127.0.0-web.exe' $true 'versioned installer variant'
+Assert-Match $shift 'InstallerPattern' 'redshift-setup.exe' $false 'Redshift installer'
+Assert-Match $shift 'InstallerPattern' 'ShiftN-1.0-setup.exe' $false 'ShiftN installer'
+Assert-Match $shift 'InstallerPattern' 'my-shift-notes.exe' $false 'shift not at start'
+
+# --- Crystal PDF fully removed from the project ---
+if ($PupDefinitions | Where-Object { $_.Name -eq 'CrystalPDF' }) {
+    $failures++; Write-Host "  FAIL: CrystalPDF should no longer be a definition" -ForegroundColor Red
+}
+if ((Get-Command Invoke-PUPScan).Parameters['Target'].Attributes |
+        Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] -and 'CrystalPDF' -in $_.ValidValues }) {
+    $failures++; Write-Host "  FAIL: CrystalPDF still in the -Target ValidateSet" -ForegroundColor Red
+}
+
+# --- ConvertTo-CanonicalRegPath: vendor-key path and PSPath collapse to one ---
+$c1 = ConvertTo-CanonicalRegPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WaveBrowser'
+$c2 = ConvertTo-CanonicalRegPath 'Microsoft.PowerShell.Core\Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\WaveBrowser'
+if ($c1 -ne $c2) { $failures++; Write-Host "  FAIL: canonical reg paths differ: '$c1' vs '$c2'" -ForegroundColor Red }
+$h1 = ConvertTo-CanonicalRegPath 'Registry::HKEY_USERS\S-1-5-21-1\Software\Shift'
+$h2 = ConvertTo-CanonicalRegPath 'Microsoft.PowerShell.Core\Registry::HKEY_USERS\S-1-5-21-1\Software\Shift'
+if ($h1 -ne $h2) { $failures++; Write-Host "  FAIL: canonical HKU paths differ: '$h1' vs '$h2'" -ForegroundColor Red }
+
+# --- Invoke-PUPRemoval: 'already gone' (ObjectNotFound) counts as Removed ---
+$missing = Join-Path ([IO.Path]::GetTempPath()) '__pup_no_such_target__.tmp'
+$gone = [PSCustomObject]@{ PUP='X'; Category='RegistryKey'; Item='k'; Status='Detected'; Detail=''; Phase=3;
+    RemoveAction = { Remove-Item -LiteralPath $missing -ErrorAction Stop }.GetNewClosure() }
+$locked = [PSCustomObject]@{ PUP='X'; Category='Folder'; Item='f'; Status='Detected'; Detail=''; Phase=3;
+    RemoveAction = { throw (New-Object System.Management.Automation.RuntimeException 'Access to the path is denied.') } }
+Invoke-PUPRemoval -Finding @($gone, $locked) | Out-Null
+if ($gone.Status -ne 'Removed') { $failures++; Write-Host "  FAIL: not-found removal should be 'Removed', got '$($gone.Status)'" -ForegroundColor Red }
+if ($locked.Status -ne 'Failed') { $failures++; Write-Host "  FAIL: genuine error should stay 'Failed', got '$($locked.Status)'" -ForegroundColor Red }
 
 if ($failures -eq 0) {
     Write-Host "PATTERNS: all assertions passed" -ForegroundColor Green

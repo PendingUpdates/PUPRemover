@@ -8,8 +8,11 @@ Windows:
 |---|---|
 | **Wave Browser** | Chromium PUP; reinstalls via a `Wavesor SWUpdater` scheduled task. Covers the co-installed sibling **WebNavigatorBrowser**. |
 | **Blazer Browser** | `PUP.Optional.BlazerBrowser`; updater runs as `BlazerBrowserUpdateTask`. |
-| **Crystal PDF** | A **trojanized fake PDF editor / infostealer** (2025 Microsoft/CIS/GDATA writeups), not mere adware. Its own uninstaller is fake. |
 | **Shift Browser** | Chromium PUP. Removed by default like the others — read [the Shift Browser note](#the-shift-browser-note) for the one caveat you should know. |
+
+> **Not covered: Crystal PDF.** It was dropped from this tool on purpose — it's
+> an infostealer that SentinelOne already detects and kills on sight, so a PUP
+> remover adds nothing. Leave it to the EDR.
 
 It sweeps and removes, per user profile: running **processes**, **scheduled
 tasks**, **install folders** (AppData / profile root), leftover
@@ -110,19 +113,25 @@ angle is just the fake-download lure (`recipes_*.exe` / `pdf_*.exe`).
 
 ## False-positive safety
 
-Match patterns never fire on the bare tokens `wave`, `blazer`, `crystal`,
+Match patterns never fire on the bare tokens `wave`, `blazer`,
 `webnavigator`, or `shift`. Verified by `tests/test-patterns.ps1` against a
 corpus of real collisions: Waves MaxxAudio (`WavesSvc*`), Wavebox, WavePad,
 GoldWave, Elgato Wave Link, Adobe Shockwave, **Siemens SIMATIC WinCC
-WebNavigator (SCADA)**, BlazeRush, Trailblazer, CrystalDiskInfo/Mark, SAP
-Crystal Reports, Redshift, OpenShift, ShiftN, and ordinary user files.
+WebNavigator (SCADA)**, BlazeRush, Trailblazer, Redshift, OpenShift, ShiftN,
+`shift-qt`, and ordinary user files.
 Additional safeguards: folder names are matched **exactly** (no filesystem
 wildcards); a user's own `C:\Users\<x>\Blazer` folder is never touched;
-`Temp\crys` is removed only when the Crystal payload is inside it; shortcuts
-are removed **only** when their resolved target points at a PUP path (never
-on name alone); MSIX/Store uninstall is disabled by default and can never
-touch Microsoft/first-party packages; and match blobs are `|`-joined so a
-pattern can't span two fields.
+shortcuts are removed **only** when their resolved target points at a PUP path
+(never on name alone); MSIX/Store uninstall is disabled by default and can
+never touch Microsoft/first-party packages; and match blobs are `|`-joined so
+a pattern can't span two fields.
+
+**Removal reporting.** A removal that finds its target *already gone* — a key
+caught by two sweeps, a parent folder that took a child with it, or a process
+that exited before we killed it — is reported as removed, not failed. Only
+genuine errors (a **locked/in-use file**, access denied) count as failures and
+drive the exit-2 "reboot and re-run" signal. Registry keys found by more than
+one sweep are de-duplicated so each is listed once.
 
 Run elevated/SYSTEM to cover every profile and all loaded `HKEY_USERS`
 hives; a non-elevated run is limited to the current user. Registry hives of
