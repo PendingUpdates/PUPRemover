@@ -10,6 +10,7 @@ Write-Host ("DEFS: loaded {0} PUP definitions" -f $PupDefinitions.Count) -Foregr
 $wave    = $PupDefinitions | Where-Object { $_.Name -eq 'WaveBrowser' }
 $blazer  = $PupDefinitions | Where-Object { $_.Name -eq 'Blazer' }
 $shift   = $PupDefinitions | Where-Object { $_.Name -eq 'ShiftBrowser' }
+$ace     = $PupDefinitions | Where-Object { $_.Name -eq 'AceAIBrowser' }
 
 $failures = 0
 function Assert-Match($def, $field, $text, $expected, $why) {
@@ -125,6 +126,44 @@ Assert-Match $shift 'RegNamePattern' 'redshift' $false 'redshift'
 Assert-Match $shift 'RegNamePattern' 'openshift' $false 'openshift'
 Assert-Match $shift 'RegNamePattern' 'ShiftN' $false 'ShiftN'
 Assert-Match $shift 'RegNamePattern' 'Shifty' $false 'Shifty'
+
+# --- ACE AI Browser: must match (install-path / compound anchored) ---
+Assert-Match $ace 'MatchPattern' 'C:\Users\bob\AppData\Local\Ace\Ace\Application\ace.exe' $true 'browser install path'
+Assert-Match $ace 'MatchPattern' 'C:\Users\bob\AppData\Local\Ace\AceUpdater\143.0\updater.exe' $true 'updater path'
+Assert-Match $ace 'MatchPattern' 'C:\Users\bob\AppData\Local\AceLauncher\Application\AceLauncher.exe' $true 'AceLauncher path'
+Assert-Match $ace 'MatchPattern' 'Ace Browser' $true 'uninstall DisplayName'
+Assert-Match $ace 'MatchPattern' 'Ace AI Browser' $true 'brand compound'
+Assert-Match $ace 'MatchPattern' 'com.acelauncher.dock' $true 'Run value name'
+Assert-Match $ace 'MatchPattern' 'Ace Browser Shield' $true 'bundled extension'
+Assert-Match $ace 'MatchPattern' 'AceSetup.exe' $true 'installer'
+Assert-Match $ace 'ProcessPattern' 'AceLauncher' $true 'launcher process'
+Assert-Match $ace 'ProcessPattern' 'AceLauncherUpdater' $true 'launcher updater process'
+Assert-Match $ace 'InstallerPattern' 'AceSetup.exe' $true 'AceSetup installer'
+Assert-Match $ace 'InstallerPattern' 'Templates_AceLauncher.exe' $true 'lure dropper'
+Assert-Match $ace 'InstallerPattern' 'AceLauncherInstaller.exe' $true 'launcher installer'
+Assert-Match $ace 'RegNamePattern' 'AceHTM.VT36H75ACA5P33DTFPY7PHK46Q' $true 'Classes AceHTM.<hash>'
+Assert-Match $ace 'RegNamePattern' 'AcePDF.VT36H75ACA5P33DTFPY7PHK46Q' $true 'Classes AcePDF.<hash>'
+Assert-Match $ace 'RegNamePattern' 'Ace.VT36H75ACA5P33DTFPY7PHK46Q' $true 'StartMenuInternet Ace.<hash>'
+Assert-Match $ace 'RegNamePattern' 'W~Ace.VT36H75ACA5P33DTFPY7PHK46Q' $true 'Start tile W~Ace.<hash>'
+# --- ACE AI Browser: must NOT match (the dangerous collisions) ---
+Assert-Match $ace 'MatchPattern' 'Microsoft.ACE.OLEDB.12.0' $false 'Access Database Engine ProgID'
+Assert-Match $ace 'MatchPattern' 'Microsoft.ACE.OLEDB.16.0' $false 'Access DB Engine 16'
+Assert-Match $ace 'MatchPattern' 'C:\Program Files\Common Files\Microsoft Shared\OFFICE16\ACEDAO\ACEOLEDB.DLL' $false 'ACE*.DLL office path'
+Assert-Match $ace 'MatchPattern' 'C:\Program Files\Acer\Acer Care Center\AcerCCTMon.exe' $false 'Acer OEM'
+Assert-Match $ace 'MatchPattern' 'C:\Program Files\Surface\SurfaceDTX.exe' $false 'Microsoft Surface'
+Assert-Match $ace 'MatchPattern' 'C:\Users\bob\AppData\Local\ACEStream\ace_engine.exe' $false 'ACEStream'
+Assert-Match $ace 'MatchPattern' 'C:\Program Files\AceReader Pro\ace.exe' $false 'AceReader Pro'
+Assert-Match $ace 'MatchPattern' 'HKLM\SOFTWARE\Microsoft\Tracing\Interfaces' $false 'interface/tracing substring'
+Assert-Match $ace 'MatchPattern' 'race results.xlsx' $false 'user file substring'
+Assert-Match $ace 'ProcessPattern' 'Acer' $false 'Acer process'
+Assert-Match $ace 'ProcessPattern' 'ace' $false 'bare ace (AceReader) — path-matched only'
+Assert-Match $ace 'ProcessPattern' 'ace_engine' $false 'ACEStream process'
+Assert-Match $ace 'RegNamePattern' 'Acer' $false 'Acer key'
+Assert-Match $ace 'RegNamePattern' 'AceStream' $false 'AceStream ProgID'
+Assert-Match $ace 'RegNamePattern' 'Microsoft.ACE.OLEDB.12.0' $false 'Access DB Engine ProgID (RegName)'
+Assert-Match $ace 'RegNamePattern' 'AceText.Document' $false 'AceText ProgID'
+Assert-Match $ace 'InstallerPattern' 'AceReaderProSetup.exe' $false 'AceReader installer'
+Assert-Match $ace 'InstallerPattern' 'spacelauncher.exe' $false 'spacelauncher substring'
 
 # --- Crystal PDF fully removed from the project ---
 if ($PupDefinitions | Where-Object { $_.Name -eq 'CrystalPDF' }) {

@@ -6,9 +6,10 @@
 # functions — it performs no scanning or removal on its own. The front-ends
 # (PUPRemover-S1.ps1, PUPRemover-Test.ps1) drive it.
 #
-# Detection targets: WaveBrowser (+ sibling WebNavigatorBrowser), Blazer, and
-# Shift Browser. (Crystal PDF was intentionally dropped — it's an infostealer
-# that SentinelOne already detects and kills, so it doesn't belong here.)
+# Detection targets: WaveBrowser (+ sibling WebNavigatorBrowser), Blazer,
+# Shift Browser, and ACE AI Browser (+ its AceLauncher dock). (Crystal PDF was
+# intentionally dropped — it's an infostealer that SentinelOne already detects
+# and kills, so it doesn't belong here.)
 #
 # Matching philosophy: MatchPattern is the single source of truth for "does
 # this string belong to the PUP" and is applied to scheduled-task blobs,
@@ -16,8 +17,9 @@
 # paths, and shortcut targets. Patterns are deliberately narrow so legitimate
 # software never matches (Waves MaxxAudio, Wavebox, Siemens WinCC
 # WebNavigator, BlazeRush, Trailblazer, redshift/openshift/ShiftN, Teams
-# Shifts, ...). Folder names are matched EXACTLY under known roots — no
-# wildcards touch the filesystem.
+# Shifts, and — for 'ace' — Microsoft.ACE.OLEDB / Access Database Engine,
+# Acer, Surface, ACEStream, AceReader, ...). Folder names are matched EXACTLY
+# under known roots — no wildcards touch the filesystem.
 # ===========================================================================
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -134,6 +136,56 @@ $script:PupDefinitions = @(
         # registration key names. '^shift$' won't hit redshift/openshift/ShiftN.
         RegNamePattern   = '(?i)^(w~)?shift(\.[a-z0-9]{8,})?$'
         PostRemovalNote  = 'Shift Browser is code-signed by Shift Technologies, Inc. and shares its install paths with a legitimate paid product; if a user installed the paid Shift on purpose, this removed it too. Test on the closed system before fleet rollout.'
+    },
+    @{
+        # ACE AI Browser (BrowseAI LLC / Sunstream Labs; TamperedChef/EvilAI
+        # cluster; Malwarebytes PUP.Optional.AceBrowser). Two co-branded parts,
+        # both targeted: the 'Ace' Chromium browser (%LOCALAPPDATA%\Ace\Ace\
+        # Application\ace.exe, updater under \Ace\AceUpdater\) and the
+        # OneLaunch-style 'AceLauncher' dock (%LOCALAPPDATA%\AceLauncher\...,
+        # AceLauncherDock).
+        #
+        # DANGER: 'ace' collides with Microsoft.ACE.OLEDB (Access Database
+        # Engine — a LIVE data provider), Acer OEM software, Microsoft Surface,
+        # ACEStream (ace_engine.exe), WinAce, AceReader (ace.exe), and 'ace'
+        # inside interface / namespace / workspace / face / trace. So NOTHING
+        # here matches a bare 'ace', a leading '^ace' prefix, or a substring:
+        # every pattern is anchored to the \Ace\Ace\ or \AceLauncher install
+        # path, the 'ace...browser' / 'acelauncher' / 'acewebextension'
+        # compounds, or exact key/process names. ace.exe (also AceReader Pro)
+        # is only killed via its \Ace\Ace\Application\ path, never by name.
+        #
+        # MEDIUM confidence: the AceLauncher artifacts and \Ace\Ace\ structure
+        # are attested; the browser's StartMenuInternet/ProgID/task names are
+        # INFERRED from the family. Validate with a RegShot capture before
+        # fleet use — treat inferred bits as "may miss", never "may over-match".
+        Name             = 'AceAIBrowser'
+        ProcessPattern   = '(?i)^(acelauncher|acelauncherupdater|acelauncherinstaller|ace_web_extension)$'
+        MatchPattern     = '(?i)[\\/]ace[\\/]ace[\\/]|[\\/]aceupdater[\\/]|(?<![a-z])acelauncher|(?<![a-z])ace_?web_?extension|(?<![a-z])ace[\s_-]*(ai[\s_-]*)?browser|com\.acelauncher|ace[\s_-]*browser[\s_-]*shield|(?<![a-z])acesetup\.exe'
+        # InstallerPattern (Downloads/Desktop .exe/.msi names only): AceSetup.exe,
+        # AceLauncherInstaller.exe, and the <lure>_AceLauncher.exe droppers.
+        InstallerPattern = '(?i)^(acesetup|acelauncher.*|.+_acelauncher|ace[\s_-]*(ai[\s_-]*)?browser.*)\.(exe|msi)$'
+        FolderNames      = @('AceLauncher', 'AceLauncherDock', 'AceLauncherAutoUpdate', 'AceWebExtension')
+        # The browser folder is the generic 'Ace'; remove it only when the
+        # nested browser exe is actually inside (guarded), so a legit
+        # %LOCALAPPDATA%\Ace is never deleted blind.
+        GuardedFolders   = @(@{ Path = 'Ace'; Marker = 'Ace\Application\ace.exe' })
+        ProfileRootFolderNames = @()
+        MachineFolders   = @()
+        RegistrySubKeys  = @(
+            'Software\AceLauncher',
+            'Software\AceLauncherUpdater',
+            'Software\AceUpdater',
+            'Software\Microsoft\Windows\CurrentVersion\Uninstall\AceLauncher'
+        )
+        MachineRegistryKeys = @()
+        RegisteredAppNames  = @('Ace', 'AceLauncher')
+        # Browser registration key NAMES (StartMenuInternet\Ace.<hash>, Classes
+        # AceHTM.<hash>/AcePDF.<hash>, W~Ace.<hash> tile) that MatchPattern
+        # misses. Requires 'htm'/'pdf' OR a .<hash> suffix, so it can never hit
+        # Acer, ACEStream, AceText, or Microsoft.ACE.OLEDB.
+        RegNamePattern   = '(?i)^(w~)?ace(htm|pdf)(\.[a-z0-9]{8,})?$|^(w~)?ace\.[a-z0-9]{8,}$'
+        PostRemovalNote  = 'ACE AI Browser coverage is partly inferred from the PUP family — validate removal with a RegShot capture on the closed test system before fleet rollout. It exfiltrates browser history/cookies; treat an infection as more than cosmetic adware.'
     }
 )
 
@@ -225,8 +277,8 @@ function ConvertTo-CanonicalRegPath {
 function Invoke-PUPScan {
     [CmdletBinding()]
     param(
-        [ValidateSet('WaveBrowser', 'Blazer', 'ShiftBrowser')]
-        [string[]]$Target = @('WaveBrowser', 'Blazer', 'ShiftBrowser')
+        [ValidateSet('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser')]
+        [string[]]$Target = @('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser')
     )
 
     $ctx         = Get-PUPContext
@@ -294,13 +346,15 @@ function Invoke-PUPScan {
                     -RemoveAction { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
             }
             # Guarded folders: a generically-named folder under AppData\Local is
-            # removed only when the PUP's marker file is actually inside it. (No
-            # current PUP defines GuardedFolders; kept as a general capability.)
+            # removed only when the PUP's marker (a file, possibly nested) is
+            # actually inside it — e.g. Ace's %LOCALAPPDATA%\Ace is removed only
+            # when Ace\Application\ace.exe exists under it, so a legit same-named
+            # folder is never deleted blind. Marker may be a nested relative
+            # path and may contain wildcards (hence Test-Path -Path, not -Literal).
             foreach ($guard in @($pup.GuardedFolders)) {
                 if (-not $guard) { continue }
                 $path = Join-Path (Join-Path $userDir 'AppData\Local') $guard.Path
-                if ((Test-Path -LiteralPath $path) -and
-                    @(Get-ChildItem -LiteralPath $path -Filter $guard.Marker -ErrorAction SilentlyContinue).Count -gt 0) {
+                if ((Test-Path -LiteralPath $path) -and (Test-Path -Path (Join-Path $path $guard.Marker))) {
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Folder' -Phase 3 -Item $path `
                         -RemoveAction { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
                 }

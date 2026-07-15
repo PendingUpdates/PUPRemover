@@ -9,6 +9,7 @@ Windows:
 | **Wave Browser** | Chromium PUP; reinstalls via a `Wavesor SWUpdater` scheduled task. Covers the co-installed sibling **WebNavigatorBrowser**. |
 | **Blazer Browser** | `PUP.Optional.BlazerBrowser`; updater runs as `BlazerBrowserUpdateTask`. |
 | **Shift Browser** | Chromium PUP. Removed by default like the others — read [the Shift Browser note](#the-shift-browser-note) for the one caveat you should know. |
+| **ACE AI Browser** | `PUP.Optional.AceBrowser` (TamperedChef cluster). Covers both the `Ace` Chromium browser and its `AceLauncher` dock. Anchored so it never touches Microsoft Access Database Engine (`Microsoft.ACE.OLEDB`), Acer, Surface, or AceReader. Some browser artifacts are inferred — **RegShot-validate before fleet use.** |
 
 It sweeps and removes, per user profile: running **processes**, **scheduled
 tasks**, **install folders** (AppData / profile root), leftover

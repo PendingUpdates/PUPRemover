@@ -17,7 +17,7 @@
 # so unrelated software (redshift / openshift / ShiftN / Teams Shifts) is
 # never touched — only actual Shift Browser installs.
 $stamp   = Get-Date -Format 'yyyyMMdd_HHmmss'
-$targets = @('WaveBrowser', 'Blazer', 'ShiftBrowser')
+$targets = @('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser')
 
 Write-Host "PUPRemover — SentinelOne auto mode"
 Write-Host ("Run: {0}   Targets: {1}" -f $stamp, ($targets -join ', '))
