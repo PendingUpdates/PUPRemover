@@ -11,12 +11,12 @@ Windows:
 | **Shift Browser** | Chromium PUP. Removed by default like the others — read [the Shift Browser note](#the-shift-browser-note) for the one caveat you should know. |
 | **ACE AI Browser** | `PUP.Optional.AceBrowser` (TamperedChef cluster). Covers both the `Ace` Chromium browser and its `AceLauncher` dock. Anchored so it never touches Microsoft Access Database Engine (`Microsoft.ACE.OLEDB`), Acer, Surface, or AceReader. Some browser artifacts are inferred — **RegShot-validate before fleet use.** |
 
-It sweeps and removes, per user profile: running **processes**, **scheduled
-tasks**, **install folders** (AppData / profile root), leftover
-**installers** in Downloads/Desktop, **registry** persistence (Run/RunOnce
-values, vendor keys, uninstall entries, browser registration,
-ProgId/COM classes), and **shortcuts** (removed only when their resolved
-target points at a PUP path). Every run reports the artifacts found (with
+It sweeps and removes, per user profile: running **processes**, **Windows
+services** (matched by binary path under a PUP folder), **scheduled tasks**,
+**install folders** (AppData / profile root), leftover **installers** in
+Downloads/Desktop, **registry** persistence (Run/RunOnce values, vendor keys,
+uninstall entries, browser registration, ProgId/COM classes), and
+**shortcuts** (removed only when their resolved target points at a PUP path). Every run reports the artifacts found (with
 their paths, registry keys, and tasks) and the per-item removal result, and
 writes a timestamped CSV + log.
 

@@ -307,6 +307,31 @@ function Invoke-PUPScan {
         }
     }
 
+    # --- 1b. Windows services whose binary IMAGE PATH is under a PUP install
+    #     folder (e.g. ACE's machine-scope 'AceUpdater' Google-Update-style
+    #     service). Matched on the service's binary path, NEVER its name, so a
+    #     legit service can't match — its binary isn't under a PUP folder.
+    #     Stopped + deleted (Phase 2) before file removal. Needs admin; on a
+    #     non-Windows host Win32_Service is absent and this yields nothing.
+    foreach ($svc in @(Get-CimInstance -ClassName Win32_Service -ErrorAction SilentlyContinue)) {
+        $svcPath = [string]$svc.PathName
+        if (-not $svcPath) { continue }
+        foreach ($pup in $activePups) {
+            if ($svcPath -match $pup.MatchPattern) {
+                $svcName = $svc.Name
+                $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Service' -Phase 2 `
+                    -Item ("{0}  ({1})" -f $svcName, $svcPath) `
+                    -RemoveAction {
+                        Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+                        $out = & sc.exe delete $svcName 2>&1
+                        # 1060 = service does not exist -> already gone, not a failure
+                        if ($LASTEXITCODE -ne 0 -and "$out" -notmatch '1060') { throw "sc delete $svcName failed: $out" }
+                    }.GetNewClosure()))
+                break
+            }
+        }
+    }
+
     # --- 2. Scheduled tasks (name / path / action-executable, blob-joined) ---
     if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
         $allTasks = @(Get-ScheduledTask -ErrorAction SilentlyContinue | ForEach-Object {
@@ -594,8 +619,10 @@ function Invoke-PUPRemoval {
     $settled   = $false
     foreach ($f in $ordered) {
         if (-not $settled -and $f.Phase -ge 3) {
-            if (@($Finding | Where-Object { $_.Phase -eq 1 -and $_.Status -eq 'Removed' }).Count -gt 0) {
-                Start-Sleep -Seconds 2   # let file locks from killed processes release
+            # Pause before touching files if we killed a process or stopped a
+            # service/task (phase 1-2), so their file locks release first.
+            if (@($Finding | Where-Object { $_.Phase -lt 3 -and $_.Status -eq 'Removed' }).Count -gt 0) {
+                Start-Sleep -Seconds 2
             }
             $settled = $true
         }
