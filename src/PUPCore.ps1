@@ -243,7 +243,11 @@ function New-PUPFinding {
         [string]$Category,
         [string]$Item,
         [int]$Phase,
-        [scriptblock]$RemoveAction
+        [scriptblock]$RemoveAction,
+        [string]$Target   # the literal filesystem path or registry key this
+                          # finding deletes; checked against Test-PUPProtected
+                          # before removal. Omit for non-path removals
+                          # (process/service/task).
     )
     [PSCustomObject]@{
         PUP          = $PUP
@@ -252,6 +256,7 @@ function New-PUPFinding {
         Status       = 'Detected'
         Detail       = ''
         Phase        = $Phase
+        Target       = $Target
         RemoveAction = $RemoveAction
     }
 }
@@ -268,6 +273,88 @@ function ConvertTo-CanonicalRegPath {
     $p = $p -replace '(?i)^HKEY_USERS', 'HKU:'
     $p = $p -replace '(?i)^HKEY_CLASSES_ROOT', 'HKCR:'
     return $p.TrimEnd('\').ToLowerInvariant()
+}
+
+# ---------------------------------------------------------------------------
+# Test-PUPProtected — hard safety backstop. Returns $true if a target must
+# NEVER be deleted, regardless of what matched it. This is defense-in-depth on
+# top of the anchored patterns: if a pattern ever wrongly matches a critical
+# OS / Office / browser path or a shallow container registry key, removal is
+# refused here. Invoke-PUPRemoval checks this before running any RemoveAction.
+# ---------------------------------------------------------------------------
+function Test-PUPProtected {
+    param([string]$Target)
+    if (-not $Target) { return $false }
+    $t = $Target.ToLowerInvariant()
+
+    # --- Registry targets ---
+    if ($t -match '(^|\\)registry::|^hk(cu|lm|u|cr):|^hkey_') {
+        $c = ConvertTo-CanonicalRegPath $Target          # e.g. hkcu:\software\...
+        # Strip the hive prefix (hkcu:/hklm:/hkcr:  or  hku:\<sid>) to the subpath.
+        $sub = $c -replace '^(hkcu:|hklm:|hkcr:)\\?', '' -replace '^hku:\\[^\\]+\\?', ''
+        $sub = $sub.TrimEnd('\')
+        # Never delete a shallow container key — only specific PUP subkeys under
+        # them are ever legitimate targets.
+        $regContainers = @(
+            'software', 'software\classes', 'software\microsoft',
+            'software\microsoft\windows', 'software\microsoft\windows\currentversion',
+            'software\microsoft\windows\currentversion\run',
+            'software\microsoft\windows\currentversion\runonce',
+            'software\microsoft\windows\currentversion\uninstall',
+            'software\microsoft\windows\currentversion\app paths',
+            'software\microsoft\windows\currentversion\explorer',
+            'software\microsoft\windows\currentversion\start',
+            'software\microsoft\windows\currentversion\start\tileproperties',
+            'software\clients', 'software\clients\startmenuinternet',
+            'software\classes\appusermodelid', 'software\classes\clsid',
+            'software\registeredapplications',
+            'software\microsoft\tracing', 'software\microsoft\mediaplayer',
+            'software\microsoft\mediaplayer\shiminclusionlist',
+            'software\wow6432node', 'software\wow6432node\microsoft', 'software\policies'
+        )
+        if ($regContainers -contains $sub) { return $true }
+        # Never touch the Microsoft Access Database Engine (ACE) / Office data
+        # provider keys, whatever matched them.
+        if ($c -match 'microsoft\.ace\.|access connectivity engine|\\office1[0-9]\\|\\microsoft shared\\') { return $true }
+        return $false
+    }
+
+    # --- Filesystem targets ---
+    $protectedFs = @(
+        '^[a-z]:\\windows(\\|$)',
+        '^[a-z]:\\program files( \(x86\))?\\common files(\\|$)',
+        '\\common files\\microsoft shared(\\|$)',
+        '\\microsoft office(\\|$)',
+        '\\microsoft\\edge(\\|$)', '\\microsoft\\edgecore(\\|$)', '\\microsoft\\edgeupdate(\\|$)',
+        '\\google\\chrome(\\|$)', '\\mozilla firefox(\\|$)', '\\mozilla\\firefox(\\|$)',
+        '\\bravesoftware(\\|$)', '\\vivaldi(\\|$)', '\\opera(\\|$)',
+        '^[a-z]:\\program files( \(x86\))?\\windows defender(\\|$)',
+        '\\program files\\windowsapps(\\|$)'
+    )
+    foreach ($rx in $protectedFs) { if ($t -match $rx) { return $true } }
+
+    # Never delete a bare shell/profile folder itself — only items inside them.
+    # Built defensively: Join-Path throws on an empty env var, and this safety
+    # guard must never crash (a crash would read as "not protected").
+    $bare = New-Object System.Collections.Generic.List[string]
+    foreach ($v in @($env:USERPROFILE, $env:APPDATA, $env:LOCALAPPDATA, $env:ProgramData,
+                     $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if ($v) { $bare.Add($v) }
+    }
+    if ($env:USERPROFILE) {
+        'Desktop', 'Downloads', 'Documents' | ForEach-Object { $bare.Add((Join-Path $env:USERPROFILE $_)) }
+    }
+    if ($env:LOCALAPPDATA) {
+        'Programs', 'Temp' | ForEach-Object { $bare.Add((Join-Path $env:LOCALAPPDATA $_)) }
+    }
+    if ($env:APPDATA) {
+        $bare.Add((Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu'))
+        $bare.Add((Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'))
+    }
+    foreach ($b in $bare) {
+        if ($b -and $t -eq $b.ToLowerInvariant().TrimEnd('\')) { return $true }
+    }
+    return $false
 }
 
 # ---------------------------------------------------------------------------
@@ -367,7 +454,7 @@ function Invoke-PUPScan {
                 foreach ($folder in $pup.ProfileRootFolderNames) { Join-Path $userDir $folder }
             )
             foreach ($path in @($candidates | Where-Object { Test-Path -LiteralPath $_ })) {
-                $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Folder' -Phase 3 -Item $path `
+                $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Folder' -Phase 3 -Item $path -Target $path `
                     -RemoveAction { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
             }
             # Guarded folders: a generically-named folder under AppData\Local is
@@ -380,7 +467,7 @@ function Invoke-PUPScan {
                 if (-not $guard) { continue }
                 $path = Join-Path (Join-Path $userDir 'AppData\Local') $guard.Path
                 if ((Test-Path -LiteralPath $path) -and (Test-Path -Path (Join-Path $path $guard.Marker))) {
-                    $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Folder' -Phase 3 -Item $path `
+                    $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Folder' -Phase 3 -Item $path -Target $path `
                         -RemoveAction { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
                 }
             }
@@ -390,7 +477,7 @@ function Invoke-PUPScan {
     # when an env var like ProgramFiles(x86) is empty on 32-bit Windows.
     foreach ($pup in $activePups) {
         foreach ($path in @($pup.MachineFolders | Where-Object { $_ -and $_ -notmatch '^\\' -and (Test-Path -LiteralPath $_) })) {
-            $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Folder' -Phase 3 -Item $path `
+            $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Folder' -Phase 3 -Item $path -Target $path `
                 -RemoveAction { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
         }
     }
@@ -407,7 +494,7 @@ function Invoke-PUPScan {
                             $_.Name -match $pup.MatchPattern -or
                             ($pup.InstallerPattern -and $_.Name -match $pup.InstallerPattern) })) {
                     $filePath = $f.FullName
-                    $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Installer' -Phase 3 -Item $filePath `
+                    $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Installer' -Phase 3 -Item $filePath -Target $filePath `
                         -RemoveAction { Remove-Item -LiteralPath $filePath -Force -ErrorAction Stop }.GetNewClosure()))
                 }
             }
@@ -426,7 +513,7 @@ function Invoke-PUPScan {
         )
         foreach ($keyPath in @($vendorKeys | Where-Object { $_ -and (Test-Path -LiteralPath $_) })) {
             if (-not $seenReg.Add((ConvertTo-CanonicalRegPath $keyPath))) { continue }
-            $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'RegistryKey' -Phase 3 -Item $keyPath `
+            $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'RegistryKey' -Phase 3 -Item $keyPath -Target $keyPath `
                 -RemoveAction { Remove-Item -LiteralPath $keyPath -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
         }
 
@@ -447,7 +534,7 @@ function Invoke-PUPScan {
                 $valueData = $key.GetValue($valueName)
                 if ("$valueName | $valueData" -match $pup.MatchPattern) {
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'RunValue' -Phase 3 `
-                        -Item "$runKey : $valueName = $valueData" `
+                        -Item "$runKey : $valueName = $valueData" -Target $runKey `
                         -RemoveAction { Remove-ItemProperty -LiteralPath $runKey `
                             -Name ([Management.Automation.WildcardPattern]::Escape($valueName)) -Force -ErrorAction Stop }.GetNewClosure()))
                 }
@@ -470,7 +557,7 @@ function Invoke-PUPScan {
                     $entryPath = $entry.PSPath
                     if (-not $seenReg.Add((ConvertTo-CanonicalRegPath $entryPath))) { continue }
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'UninstallEntry' -Phase 3 `
-                        -Item ("{0} ({1})" -f $entry.PSChildName, $props.DisplayName) `
+                        -Item ("{0} ({1})" -f $entry.PSChildName, $props.DisplayName) -Target $entryPath `
                         -RemoveAction { Remove-Item -LiteralPath $entryPath -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
                 }
             }
@@ -502,7 +589,7 @@ function Invoke-PUPScan {
                     $subPath = $sub.PSPath
                     if (-not $seenReg.Add((ConvertTo-CanonicalRegPath $subPath))) { continue }
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'RegistryKey' -Phase 3 `
-                        -Item ($subPath -replace '^.*::', '') `
+                        -Item ($subPath -replace '^.*::', '') -Target $subPath `
                         -RemoveAction { Remove-Item -LiteralPath $subPath -Recurse -Force -ErrorAction Stop }.GetNewClosure()))
                 }
             }
@@ -512,7 +599,7 @@ function Invoke-PUPScan {
                 foreach ($valueName in @($regApps.GetValueNames() |
                          Where-Object { $_ -match $pup.MatchPattern -or $_ -in @($pup.RegisteredAppNames) })) {
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'RegistryValue' -Phase 3 `
-                        -Item "$regAppsPath : $valueName" `
+                        -Item "$regAppsPath : $valueName" -Target $regAppsPath `
                         -RemoveAction { Remove-ItemProperty -LiteralPath $regAppsPath `
                             -Name ([Management.Automation.WildcardPattern]::Escape($valueName)) -Force -ErrorAction Stop }.GetNewClosure()))
                 }
@@ -592,7 +679,7 @@ function Invoke-PUPScan {
                 if (-not ($lnkTarget -and ($lnkTarget -match $pup.MatchPattern))) { continue }
                 $lnkPath = $lnk.FullName
                 $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'Shortcut' -Phase 3 `
-                    -Item "$lnkPath -> $lnkTarget" `
+                    -Item "$lnkPath -> $lnkTarget" -Target $lnkPath `
                     -RemoveAction { Remove-Item -LiteralPath $lnkPath -Force -ErrorAction Stop }.GetNewClosure()))
             }
         }
@@ -625,6 +712,13 @@ function Invoke-PUPRemoval {
                 Start-Sleep -Seconds 2
             }
             $settled = $true
+        }
+        # Hard safety backstop: never delete a protected OS/Office/browser path
+        # or a shallow container key, no matter what matched it.
+        if ($f.Target -and (Test-PUPProtected $f.Target)) {
+            $f.Status = 'Skipped'
+            $f.Detail = 'protected location — not removed'
+            continue
         }
         try {
             & $f.RemoveAction
@@ -672,11 +766,12 @@ function Write-PUPFindings {
                 'Removed'  { 'Green' }
                 'Detected' { 'Yellow' }
                 'Failed'   { 'Red' }
+                'Skipped'  { 'Magenta' }
                 default    { 'Gray' }
             }
             Write-Host ("    [{0,-8}] {1,-14} {2}" -f $f.Status, $f.Category, $f.Item) -ForegroundColor $color
-            if ($f.Status -eq 'Failed' -and $f.Detail) {
-                Write-Host ("                 -> $($f.Detail)") -ForegroundColor DarkRed
+            if ($f.Detail -and $f.Status -in @('Failed', 'Skipped')) {
+                Write-Host ("                 -> $($f.Detail)") -ForegroundColor DarkGray
             }
         }
     }

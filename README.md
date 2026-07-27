@@ -32,8 +32,11 @@ Both are **self-contained** (no dependencies) and live at the repo root:
 
 ### `PUPRemover-S1.ps1` — automated (SentinelOne)
 
-Runs non-interactively as SYSTEM: scans, reports, removes everything, reports
-the result, and exits with a machine-readable code. No prompts, no arguments.
+Runs non-interactively as SYSTEM: scans, removes everything, and prints the
+**removal results as the very last thing in the console** (context, notes, and
+the report path come first) — so the "what was removed" block is what shows in
+the SentinelOne run output. Exits with a machine-readable code. No prompts, no
+arguments.
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File PUPRemover-S1.ps1
@@ -111,17 +114,31 @@ angle is just the fake-download lure (`recipes_*.exe` / `pdf_*.exe`).
 ## False-positive safety
 
 Match patterns never fire on the bare tokens `wave`, `blazer`,
-`webnavigator`, or `shift`. Verified by `tests/test-patterns.ps1` against a
-corpus of real collisions: Waves MaxxAudio (`WavesSvc*`), Wavebox, WavePad,
-GoldWave, Elgato Wave Link, Adobe Shockwave, **Siemens SIMATIC WinCC
+`webnavigator`, `shift`, or `ace`. Verified by `tests/test-patterns.ps1`
+against a corpus of real collisions: Waves MaxxAudio (`WavesSvc*`), Wavebox,
+WavePad, GoldWave, Elgato Wave Link, Adobe Shockwave, **Siemens SIMATIC WinCC
 WebNavigator (SCADA)**, BlazeRush, Trailblazer, Redshift, OpenShift, ShiftN,
-`shift-qt`, and ordinary user files.
+`shift-qt`, **Microsoft.ACE.OLEDB / Access Database Engine**, Acer, Surface,
+ACEStream, AceReader, and ordinary user files.
 Additional safeguards: folder names are matched **exactly** (no filesystem
 wildcards); a user's own `C:\Users\<x>\Blazer` folder is never touched;
-shortcuts are removed **only** when their resolved target points at a PUP path
-(never on name alone); MSIX/Store uninstall is disabled by default and can
-never touch Microsoft/first-party packages; and match blobs are `|`-joined so
-a pattern can't span two fields.
+generically-named PUP folders (e.g. `Ace`) are removed only when the PUP's
+own executable is nested inside; `ace.exe` (also AceReader) is killed only via
+its install path, never by name; shortcuts are removed **only** when their
+resolved target points at a PUP path (never on name alone); MSIX/Store
+uninstall is disabled by default and can never touch Microsoft/first-party
+packages; and match blobs are `|`-joined so a pattern can't span two fields.
+
+**Protected-locations backstop.** On top of the anchored patterns, every
+removal is checked against a hard never-touch list *before* it runs: anything
+under `C:\Windows`, `Program Files\Common Files` / Microsoft Shared / Office
+(where the `Microsoft.ACE` DLLs live), the major browsers (Edge, Chrome,
+Firefox, Brave, …), or Windows Defender; any Microsoft.ACE / Office registry
+key; shallow container registry keys (`Software`, `Software\Classes`,
+`…\Run`, `…\Uninstall`, `StartMenuInternet`, …); and bare shell/profile
+folders themselves. If a pattern ever wrongly matched one of these, removal is
+**refused** and the item is reported `Skipped`, not deleted — so a future
+pattern mistake can't repeat the kind of over-removal we hit early on.
 
 **Removal reporting.** A removal that finds its target *already gone* — a key
 caught by two sweeps, a parent folder that took a child with it, or a process

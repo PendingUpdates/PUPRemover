@@ -195,6 +195,49 @@ Invoke-PUPRemoval -Finding @($gone, $locked) | Out-Null
 if ($gone.Status -ne 'Removed') { $failures++; Write-Host "  FAIL: not-found removal should be 'Removed', got '$($gone.Status)'" -ForegroundColor Red }
 if ($locked.Status -ne 'Failed') { $failures++; Write-Host "  FAIL: genuine error should stay 'Failed', got '$($locked.Status)'" -ForegroundColor Red }
 
+# --- Test-PUPProtected: hard safety backstop ---
+function Assert-Protected($text, $expected, $why) {
+    $actual = [bool](Test-PUPProtected $text)
+    if ($actual -ne $expected) {
+        $script:failures++
+        Write-Host ("  FAIL [protected] '{0}' => {1} expected {2}  ({3})" -f $text, $actual, $expected, $why) -ForegroundColor Red
+    }
+}
+# MUST be protected (never deletable):
+Assert-Protected 'HKCU:\Software\Classes' $true 'Classes container'
+Assert-Protected 'HKLM:\SOFTWARE\Microsoft' $true 'Microsoft container'
+Assert-Protected 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' $true 'Run container'
+Assert-Protected 'HKCU:\Software\Clients\StartMenuInternet' $true 'StartMenuInternet container'
+Assert-Protected 'HKCU:\Software\RegisteredApplications' $true 'RegisteredApplications container'
+Assert-Protected 'Microsoft.PowerShell.Core\Registry::HKEY_CURRENT_USER\Software\Classes' $true 'container via PSPath'
+Assert-Protected 'HKLM:\SOFTWARE\Classes\Microsoft.ACE.OLEDB.12.0' $true 'Access DB Engine ProgID key'
+Assert-Protected 'C:\Windows\System32\drivers\etc\hosts' $true 'Windows'
+Assert-Protected 'C:\Program Files\Common Files\Microsoft Shared\OFFICE16\ACEDAO\ACEOLEDB.DLL' $true 'Office ACE dll'
+Assert-Protected 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe' $true 'Edge'
+Assert-Protected 'C:\Program Files\Google\Chrome\Application\chrome.exe' $true 'Chrome'
+$savedUP = $env:USERPROFILE
+$env:USERPROFILE = 'C:\Users\tester'
+Assert-Protected 'C:\Users\tester' $true 'bare profile root'
+Assert-Protected 'C:\Users\tester\AppData\Local\WaveBrowser' $false 'PUP folder under profile — removable'
+$env:USERPROFILE = $savedUP
+# MUST NOT be protected (real PUP targets stay removable):
+Assert-Protected 'HKCU:\Software\WaveBrowser' $false 'Wave vendor key'
+Assert-Protected 'HKCU:\Software\Classes\WaveBrwsHTM.VT36H75ACA5P33DTFPY7PHK46Q' $false 'Wave ProgID child'
+Assert-Protected 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\WaveBrowser' $false 'Wave uninstall subkey'
+Assert-Protected 'C:\Users\bob\AppData\Local\Ace' $false 'Ace folder'
+Assert-Protected '' $false 'empty target'
+
+# --- Invoke-PUPRemoval honours the protected backstop (Skipped, action not run) ---
+$script:pupRanProtected = $false
+$prot = [PSCustomObject]@{ PUP='X'; Category='RegistryKey'; Item='k'; Status='Detected'; Detail=''; Phase=3;
+    Target='HKCU:\Software\Classes'; RemoveAction = { $script:pupRanProtected = $true } }
+$ok = [PSCustomObject]@{ PUP='X'; Category='RegistryKey'; Item='k2'; Status='Detected'; Detail=''; Phase=3;
+    Target='HKCU:\Software\WaveBrowser'; RemoveAction = { } }
+Invoke-PUPRemoval -Finding @($prot, $ok) | Out-Null
+if ($prot.Status -ne 'Skipped') { $failures++; Write-Host "  FAIL: protected target should be 'Skipped', got '$($prot.Status)'" -ForegroundColor Red }
+if ($script:pupRanProtected)    { $failures++; Write-Host "  FAIL: RemoveAction ran on a protected target" -ForegroundColor Red }
+if ($ok.Status -ne 'Removed')   { $failures++; Write-Host "  FAIL: normal target should be 'Removed', got '$($ok.Status)'" -ForegroundColor Red }
+
 if ($failures -eq 0) {
     Write-Host "PATTERNS: all assertions passed" -ForegroundColor Green
     exit 0
