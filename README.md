@@ -10,6 +10,7 @@ Windows:
 | **Blazer Browser** | `PUP.Optional.BlazerBrowser`; updater runs as `BlazerBrowserUpdateTask`. |
 | **Shift Browser** | Chromium PUP. Removed by default like the others — read [the Shift Browser note](#the-shift-browser-note) for the one caveat you should know. |
 | **ACE AI Browser** | `PUP.Optional.AceBrowser` (TamperedChef cluster). Covers both the `Ace` Chromium browser and its `AceLauncher` dock. Anchored so it never touches Microsoft Access Database Engine (`Microsoft.ACE.OLEDB`), Acer, Surface, or AceReader. Some browser artifacts are inferred — **RegShot-validate before fleet use.** |
+| **Pulse Browser** | `PUP.Optional.PulseBrowser` (vendor "Pulse Software"; Wave/OneStart family). Covers `pulsebrowser.exe` and the `PulseBrowserUpdater` under `%LOCALAPPDATA%\PulseSoftware\`. Keyed on that **vendor folder**, the "Pulse Software" publisher, and the updater — never a bare "Pulse Browser" — so **Pulse Secure / Ivanti VPN**, **Pulseway RMM**, PulseAudio, and the unrelated legit open-source Firefox fork also called "Pulse Browser" are never touched. Some browser artifacts are inferred — **RegShot-validate before fleet use.** |
 
 It sweeps and removes, per user profile: running **processes**, **Windows
 services** (matched by binary path under a PUP folder), **scheduled tasks**,
@@ -47,7 +48,7 @@ removals failed (reboot the endpoint and re-run). Under SentinelOne a
 non-zero exit surfaces as a failed run, so `2` flags machines that need
 attention — the intended signal.
 
-Removes **all four** PUPs unconditionally — this is a fleet-wide remover, no
+Removes **all five** PUPs unconditionally — this is a fleet-wide remover, no
 arguments or toggles. (That includes Shift Browser; see
 [the Shift Browser note](#the-shift-browser-note).)
 
@@ -114,12 +115,17 @@ angle is just the fake-download lure (`recipes_*.exe` / `pdf_*.exe`).
 ## False-positive safety
 
 Match patterns never fire on the bare tokens `wave`, `blazer`,
-`webnavigator`, `shift`, or `ace`. Verified by `tests/test-patterns.ps1`
+`webnavigator`, `shift`, `ace`, or `pulse`. Verified by `tests/test-patterns.ps1`
 against a corpus of real collisions: Waves MaxxAudio (`WavesSvc*`), Wavebox,
 WavePad, GoldWave, Elgato Wave Link, Adobe Shockwave, **Siemens SIMATIC WinCC
 WebNavigator (SCADA)**, BlazeRush, Trailblazer, Redshift, OpenShift, ShiftN,
 `shift-qt`, **Microsoft.ACE.OLEDB / Access Database Engine**, Acer, Surface,
-ACEStream, AceReader, and ordinary user files.
+ACEStream, AceReader, **Pulse Secure / Ivanti Secure Access (corporate VPN)**,
+**Pulseway RMM (MMSOFT Design)**, PulseAudio, Sapphire PULSE, Impulse, the
+unrelated open-source **Pulse Browser Firefox fork**, and ordinary user files.
+Pulse Browser is keyed on its `PulseSoftware` vendor folder / "Pulse Software"
+publisher / `PulseBrowserUpdater` persistence — its *vendor identity*, never
+the product name it shares with the Firefox fork.
 Additional safeguards: folder names are matched **exactly** (no filesystem
 wildcards); a user's own `C:\Users\<x>\Blazer` folder is never touched;
 generically-named PUP folders (e.g. `Ace`) are removed only when the PUP's
@@ -133,8 +139,10 @@ packages; and match blobs are `|`-joined so a pattern can't span two fields.
 removal is checked against a hard never-touch list *before* it runs: anything
 under `C:\Windows`, `Program Files\Common Files` / Microsoft Shared / Office
 (where the `Microsoft.ACE` DLLs live), the major browsers (Edge, Chrome,
-Firefox, Brave, …), or Windows Defender; any Microsoft.ACE / Office registry
-key; shallow container registry keys (`Software`, `Software\Classes`,
+Firefox, Brave, …), Windows Defender, or the business-critical VPN/RMM tools
+that share the `pulse` stem (**Pulse Secure / Ivanti**, **Pulseway / MMSOFT
+Design**); any Microsoft.ACE / Office registry key; shallow container registry
+keys (`Software`, `Software\Classes`,
 `…\Run`, `…\Uninstall`, `StartMenuInternet`, …); and bare shell/profile
 folders themselves. If a pattern ever wrongly matched one of these, removal is
 **refused** and the item is reported `Skipped`, not deleted — so a future

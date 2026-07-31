@@ -191,6 +191,80 @@ $script:PupDefinitions = @(
         # Acer, ACEStream, AceText, or Microsoft.ACE.OLEDB.
         RegNamePattern   = '(?i)^(w~)?ace(htm|pdf)(\.[a-z0-9]{8,})?$|^(w~)?ace\.[a-z0-9]{8,}$'
         PostRemovalNote  = 'ACE AI Browser coverage is partly inferred from the PUP family — validate removal with a RegShot capture on the closed test system before fleet rollout. It exfiltrates browser history/cookies; treat an infection as more than cosmetic adware.'
+    },
+    @{
+        # PulseBrowser (vendor "Pulse Software"; Malwarebytes PUP.Optional.
+        # PulseBrowser, Gridinsoft PUP.Win64.PulseBrowser.dd!c). Chromium PUP
+        # browser in the Wave/OneStart family: installs per-user to
+        # %LOCALAPPDATA%\PulseSoftware\PulseBrowser\Application\<ver>\
+        # pulsebrowser.exe, with an Omaha-fork updater at
+        # %LOCALAPPDATA%\PulseSoftware\PulseBrowserUpdater\<ver>\updater.exe
+        # (--wake), persisting via a 'PulseBrowserUpdaterTaskUser<hex>'
+        # scheduled task and a 'Pulse Browser Updater' Run value. Search-hijacks
+        # through mypulsehome.com / search.pulsebrowser.com. Signer seen as
+        # "Alabama Technology USA, LLC".
+        #
+        # DANGER — TWO distinct collisions, both business-critical or a
+        # legitimate same-named app, so NOTHING here matches a bare 'pulse' or
+        # even a bare 'pulse browser':
+        #   * Pulse Secure / Ivanti Secure Access (corporate VPN) — folder
+        #     'Pulse Secure', PulseSecureService.exe, HKLM\SOFTWARE\Pulse Secure.
+        #     Wrongly removing it locks users out of the network.
+        #   * Pulseway RMM (MMSOFT Design) — PCMonitorSrv.exe, task
+        #     'PulsewayServiceCheck', HKLM\SOFTWARE\MMSOFT Design.
+        #   * A SEPARATE legitimate open-source Firefox fork ALSO named "Pulse
+        #     Browser" (github.com/pulse-browser/browser, Gecko-based) — same
+        #     product name, different vendor.
+        # Every pattern is therefore anchored to the PUP's *vendor identity*:
+        # the \PulseSoftware\ install path, the 'Pulse Software' publisher
+        # string, or the 'PulseBrowserUpdater' persistence compound — never the
+        # bare product name. That keeps Pulse Secure, Pulseway, PulseAudio,
+        # Impulse, Sapphire PULSE, and the unrelated Firefox fork untouched.
+        #
+        # MEDIUM confidence: the \PulseSoftware\ layout, updater, uninstall
+        # publisher, task fragment and Run value are attested; the
+        # StartMenuInternet/ProgID/RegisteredApplications hash names are INFERRED
+        # from the family. Validate with a RegShot capture before fleet use —
+        # treat inferred bits as "may miss", never "may over-match".
+        Name             = 'PulseBrowser'
+        ProcessPattern   = '(?i)^(new_)?pulsebrowser$'
+        # Vendor-anchored only: the \PulseSoftware\ path (covers pulsebrowser.exe,
+        # the generic updater.exe/setup.exe by their path, uninstall
+        # InstallLocation, shortcuts), the 'Pulse Software' publisher/vendor-key
+        # string, the 'PulseBrowserUpdater' persistence compound (task name + Run
+        # value), and the hijack domains. NEVER a bare 'pulse'/'pulse browser',
+        # so Pulse Secure/Pulseway/PulseAudio/Impulse/the Firefox fork are safe.
+        MatchPattern     = '(?i)[\\/]pulsesoftware[\\/]|(?<![a-z])pulse[\s_-]*software|(?<![a-z])pulse[\s_-]*browser[\s_-]*updater|mypulsehome\.com|search\.pulsebrowser\.com|(?<![a-z])pulsebrowser\.com'
+        # Browser-registration key NAMES (StartMenuInternet\PulseBrowser.<hash>,
+        # Classes PulseBrowserHTM/PDF.<hash>, W~PulseBrowser.<hash> tile,
+        # RegisteredApplications 'PulseBrowser.<hash>') that MatchPattern misses.
+        # The bare-name form REQUIRES a .<hash> suffix so a plain 'PulseBrowser'
+        # client key (more likely the Firefox fork) never matches; the HTM/PDF
+        # forms may appear with or without the hash.
+        RegNamePattern   = '(?i)^(w~)?pulsebrowser(htm|html|pdf)(\.[a-z0-9]{8,})?$|^(w~)?pulsebrowser\.[a-z0-9]{8,}$'
+        # InstallerPattern (Downloads/Desktop .exe/.msi names only): the
+        # 'pulse-browser.installer.exe' dropper and PulseBrowser*Setup variants.
+        # Anchored at the start on 'pulse[sep]browser', so nothing else matches.
+        InstallerPattern = '(?i)^pulse[\s_-]?browser.*\.(exe|msi)$'
+        # Only the vendor folder is listed: removing %LOCALAPPDATA%\PulseSoftware
+        # takes PulseBrowser + PulseBrowserUpdater + User Data with it in one
+        # shot. A bare 'PulseBrowser' folder name is deliberately NOT listed —
+        # the Firefox fork can install to \AppData\Local\Programs\PulseBrowser,
+        # and we must never delete that.
+        FolderNames      = @('PulseSoftware')
+        ProfileRootFolderNames = @()
+        MachineFolders   = @()
+        RegistrySubKeys  = @(
+            'Software\PulseSoftware',
+            'Software\PulseSoftware\PulseBrowser',
+            'Software\Microsoft\Windows\CurrentVersion\App Paths\pulsebrowser.exe'
+        )
+        MachineRegistryKeys = @()
+        # No bare 'PulseBrowser' registered-app name: the real value is the
+        # hash-suffixed 'PulseBrowser.<hash>', caught by RegNamePattern. A bare
+        # 'PulseBrowser' would risk the Firefox fork's registration.
+        RegisteredAppNames  = @()
+        PostRemovalNote  = 'PulseBrowser is matched by its %LOCALAPPDATA%\PulseSoftware vendor folder, the "Pulse Software" publisher, and the "PulseBrowserUpdater" persistence — never by a bare "Pulse Browser". So Pulse Secure / Ivanti VPN, Pulseway RMM, and the unrelated legitimate open-source Firefox fork also named "Pulse Browser" are not targeted. Its browser-registration hashes are inferred from the PUP family — RegShot-validate before fleet rollout.'
     }
 )
 
@@ -321,6 +395,11 @@ function Test-PUPProtected {
         # Never touch the Microsoft Access Database Engine (ACE) / Office data
         # provider keys, whatever matched them.
         if ($c -match 'microsoft\.ace\.|access connectivity engine|\\office1[0-9]\\|\\microsoft shared\\') { return $true }
+        # Never touch business-critical VPN/RMM vendor keys that share the
+        # 'pulse' stem (Pulse Secure / Ivanti Secure Access, Pulseway RMM /
+        # MMSOFT Design). The PUP's own keys live under 'PulseSoftware', so this
+        # can never block a real PulseBrowser removal — pure insurance.
+        if ($c -match '\\pulse secure(\\|$)|\\pulseway(\\|$)|\\mmsoft design(\\|$)') { return $true }
         return $false
     }
 
@@ -334,7 +413,10 @@ function Test-PUPProtected {
         '\\google\\chrome(\\|$)', '\\mozilla firefox(\\|$)', '\\mozilla\\firefox(\\|$)',
         '\\bravesoftware(\\|$)', '\\vivaldi(\\|$)', '\\opera(\\|$)',
         '^[a-z]:\\program files( \(x86\))?\\windows defender(\\|$)',
-        '\\program files\\windowsapps(\\|$)'
+        '\\program files\\windowsapps(\\|$)',
+        # Business-critical VPN/RMM that share the 'pulse' stem — hard-protected
+        # as insurance. The PUP installs under \PulseSoftware\, never these.
+        '\\pulse secure(\\|$)', '\\pulseway(\\|$)', '\\mmsoft design(\\|$)'
     )
     foreach ($rx in $protectedFs) { if ($t -match $rx) { return $true } }
 
@@ -369,8 +451,8 @@ function Test-PUPProtected {
 function Invoke-PUPScan {
     [CmdletBinding()]
     param(
-        [ValidateSet('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser')]
-        [string[]]$Target = @('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser')
+        [ValidateSet('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser', 'PulseBrowser')]
+        [string[]]$Target = @('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser', 'PulseBrowser')
     )
 
     $ctx         = Get-PUPContext
@@ -602,7 +684,9 @@ function Invoke-PUPScan {
             $regApps = Get-Item -LiteralPath $regAppsPath -ErrorAction SilentlyContinue
             if ($regApps) {
                 foreach ($valueName in @($regApps.GetValueNames() |
-                         Where-Object { $_ -match $pup.MatchPattern -or $_ -in @($pup.RegisteredAppNames) })) {
+                         Where-Object { $_ -match $pup.MatchPattern -or
+                                        ($pup.RegNamePattern -and $_ -match $pup.RegNamePattern) -or
+                                        $_ -in @($pup.RegisteredAppNames) })) {
                     $findings.Add((New-PUPFinding -PUP $pup.Name -Category 'RegistryValue' -Phase 3 `
                         -Item "$regAppsPath : $valueName" -Target $regAppsPath `
                         -RemoveAction { Remove-ItemProperty -LiteralPath $regAppsPath `
@@ -849,7 +933,7 @@ function Export-PUPReport {
 # protected-locations backstop refuses to touch Windows/Office/browser paths),
 # so unrelated software is never removed — only actual PUP installs.
 $stamp   = Get-Date -Format 'yyyyMMdd_HHmmss'
-$targets = @('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser')
+$targets = @('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser', 'PulseBrowser')
 
 Write-Host "PUPRemover — SentinelOne auto mode"
 Write-Host ("Run: {0}   Targets: {1}" -f $stamp, ($targets -join ', '))

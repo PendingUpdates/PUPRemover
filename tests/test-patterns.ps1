@@ -11,6 +11,7 @@ $wave    = $PupDefinitions | Where-Object { $_.Name -eq 'WaveBrowser' }
 $blazer  = $PupDefinitions | Where-Object { $_.Name -eq 'Blazer' }
 $shift   = $PupDefinitions | Where-Object { $_.Name -eq 'ShiftBrowser' }
 $ace     = $PupDefinitions | Where-Object { $_.Name -eq 'AceAIBrowser' }
+$pulse   = $PupDefinitions | Where-Object { $_.Name -eq 'PulseBrowser' }
 
 $failures = 0
 function Assert-Match($def, $field, $text, $expected, $why) {
@@ -167,6 +168,69 @@ Assert-Match $ace 'RegNamePattern' 'Microsoft.ACE.OLEDB.12.0' $false 'Access DB 
 Assert-Match $ace 'RegNamePattern' 'AceText.Document' $false 'AceText ProgID'
 Assert-Match $ace 'InstallerPattern' 'AceReaderProSetup.exe' $false 'AceReader installer'
 Assert-Match $ace 'InstallerPattern' 'spacelauncher.exe' $false 'spacelauncher substring'
+
+# --- PulseBrowser: must match (vendor-identity anchored) ---
+Assert-Match $pulse 'MatchPattern' 'C:\Users\bob\AppData\Local\PulseSoftware\PulseBrowser\Application\140.0.7339.192\pulsebrowser.exe' $true 'browser install path'
+Assert-Match $pulse 'MatchPattern' 'C:\Users\bob\AppData\Local\PulseSoftware\PulseBrowserUpdater\1.3.35\updater.exe --wake' $true 'updater path + action'
+Assert-Match $pulse 'MatchPattern' 'C:\Users\bob\AppData\Local\PulseSoftware\PulseBrowser\Application\140.0.7339.192\Installer\setup.exe --uninstall' $true 'uninstaller path'
+Assert-Match $pulse 'MatchPattern' 'PulseBrowserUpdaterTaskUser8F2A1C' $true 'scheduled task name'
+Assert-Match $pulse 'MatchPattern' 'PulseBrowserUpdaterTaskUser8F2A1CCore' $true 'task Core variant'
+Assert-Match $pulse 'MatchPattern' 'Pulse Browser Updater' $true 'Run value name'
+Assert-Match $pulse 'MatchPattern' 'GUID | Pulse Browser | Pulse Software | C:\Users\bob\AppData\Local\PulseSoftware\PulseBrowser' $true 'uninstall blob (publisher + location)'
+Assert-Match $pulse 'MatchPattern' 'PulseBrowser | Pulse Browser | Pulse Software |' $true 'uninstall blob by publisher only'
+Assert-Match $pulse 'MatchPattern' 'search.pulsebrowser.com' $true 'address-bar hijack domain'
+Assert-Match $pulse 'MatchPattern' 'mypulsehome.com' $true 'homepage hijack domain'
+Assert-Match $pulse 'MatchPattern' 'HKCU\Software\PulseSoftware' $true 'vendor registry key'
+Assert-Match $pulse 'ProcessPattern' 'pulsebrowser' $true 'browser process'
+Assert-Match $pulse 'ProcessPattern' 'new_pulsebrowser' $true 'staged-update process'
+Assert-Match $pulse 'InstallerPattern' 'pulse-browser.installer.exe' $true 'attested dropper'
+Assert-Match $pulse 'InstallerPattern' 'PulseBrowserSetup.exe' $true 'setup installer'
+Assert-Match $pulse 'InstallerPattern' 'Pulse_Browser_installer.exe' $true 'underscore installer'
+Assert-Match $pulse 'RegNamePattern' 'PulseBrowser.5QMLTPZDDJG2BQZHV26QUN4ZK4' $true 'StartMenuInternet\PulseBrowser.<hash>'
+Assert-Match $pulse 'RegNamePattern' 'PulseBrowserHTM.5QMLTPZDDJG2BQZHV26QUN4ZK4' $true 'Classes PulseBrowserHTM.<hash>'
+Assert-Match $pulse 'RegNamePattern' 'PulseBrowserPDF.5QMLTPZDDJG2BQZHV26QUN4ZK4' $true 'Classes PulseBrowserPDF.<hash>'
+Assert-Match $pulse 'RegNamePattern' 'W~PulseBrowser.5QMLTPZDDJG2BQZHV26QUN4ZK4' $true 'Start tile W~PulseBrowser.<hash>'
+# --- PulseBrowser: must NOT match (VPN/RMM/audio/fork collisions) ---
+Assert-Match $pulse 'MatchPattern' 'Pulse Secure' $false 'Pulse Secure VPN name'
+Assert-Match $pulse 'MatchPattern' 'C:\Program Files (x86)\Common Files\Pulse Secure\Integration Service\PulseSecureService.exe' $false 'Pulse Secure VPN path'
+Assert-Match $pulse 'MatchPattern' 'HKLM\SOFTWARE\Pulse Secure\Pulse' $false 'Pulse Secure registry'
+Assert-Match $pulse 'MatchPattern' 'Ivanti Secure Access' $false 'Ivanti VPN rebrand'
+Assert-Match $pulse 'MatchPattern' 'PulsewayServiceCheck' $false 'Pulseway RMM task'
+Assert-Match $pulse 'MatchPattern' 'C:\Program Files\Pulseway\PCMonitorSrv.exe' $false 'Pulseway RMM path'
+Assert-Match $pulse 'MatchPattern' 'HKLM\SOFTWARE\MMSOFT Design\PC Monitor' $false 'Pulseway vendor registry'
+Assert-Match $pulse 'MatchPattern' 'C:\Program Files\PulseAudio\bin\pulseaudio.exe' $false 'PulseAudio'
+Assert-Match $pulse 'MatchPattern' 'Pulse SMS' $false 'Pulse SMS desktop app'
+Assert-Match $pulse 'MatchPattern' 'Sapphire PULSE Radeon' $false 'Sapphire PULSE GPU brand'
+Assert-Match $pulse 'MatchPattern' 'C:\Program Files\Impulse\Impulse.exe' $false 'Stardock Impulse (substring)'
+Assert-Match $pulse 'MatchPattern' 'Pulse Browser' $false 'bare product name (shared with Firefox fork)'
+Assert-Match $pulse 'MatchPattern' 'C:\Users\bob\AppData\Local\Programs\PulseBrowser\pulsebrowser.exe' $false 'legit Firefox fork install path (no PulseSoftware vendor folder)'
+Assert-Match $pulse 'MatchPattern' 'GUID | Pulse Browser | pulse-browser contributors | ' $false 'Firefox fork uninstall blob (different publisher)'
+Assert-Match $pulse 'MatchPattern' 'impulse tracker.xm' $false 'user file substring'
+Assert-Match $pulse 'ProcessPattern' 'PulseSecureService' $false 'Pulse Secure VPN process'
+Assert-Match $pulse 'ProcessPattern' 'PCMonitorSrv' $false 'Pulseway RMM process'
+Assert-Match $pulse 'ProcessPattern' 'pulseaudio' $false 'PulseAudio process'
+Assert-Match $pulse 'RegNamePattern' 'PulseBrowser' $false 'bare PulseBrowser key (fork risk) — needs hash'
+Assert-Match $pulse 'RegNamePattern' 'PulseSecure' $false 'Pulse Secure key'
+Assert-Match $pulse 'InstallerPattern' 'PulseSecureSetup.exe' $false 'Pulse Secure installer'
+Assert-Match $pulse 'InstallerPattern' 'pulseway-x64.msi' $false 'Pulseway installer'
+Assert-Match $pulse 'InstallerPattern' 'impulse-setup.exe' $false 'Impulse installer'
+
+# --- Test-PUPProtected: business-critical VPN/RMM insurance backstop ---
+Assert-Protected 'C:\Program Files (x86)\Common Files\Pulse Secure\Integration Service\PulseSecureService.exe' $true 'Pulse Secure VPN path'
+Assert-Protected 'C:\Program Files\Pulseway\PCMonitorSrv.exe' $true 'Pulseway RMM path'
+Assert-Protected 'HKLM:\SOFTWARE\Pulse Secure\Pulse' $true 'Pulse Secure registry'
+Assert-Protected 'HKLM:\SOFTWARE\MMSOFT Design\PC Monitor' $true 'Pulseway vendor registry'
+Assert-Protected 'HKCU:\Software\PulseSoftware' $false 'PulseBrowser vendor key stays removable'
+Assert-Protected 'C:\Users\bob\AppData\Local\PulseSoftware' $false 'PulseBrowser vendor folder stays removable'
+
+# --- PulseBrowser wired in as a default target ---
+if (-not ($PupDefinitions | Where-Object { $_.Name -eq 'PulseBrowser' })) {
+    $failures++; Write-Host "  FAIL: PulseBrowser definition missing" -ForegroundColor Red
+}
+if (-not ((Get-Command Invoke-PUPScan).Parameters['Target'].Attributes |
+        Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] -and 'PulseBrowser' -in $_.ValidValues })) {
+    $failures++; Write-Host "  FAIL: PulseBrowser not in the -Target ValidateSet" -ForegroundColor Red
+}
 
 # --- Crystal PDF fully removed from the project ---
 if ($PupDefinitions | Where-Object { $_.Name -eq 'CrystalPDF' }) {

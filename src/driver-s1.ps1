@@ -18,7 +18,7 @@
 # protected-locations backstop refuses to touch Windows/Office/browser paths),
 # so unrelated software is never removed — only actual PUP installs.
 $stamp   = Get-Date -Format 'yyyyMMdd_HHmmss'
-$targets = @('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser')
+$targets = @('WaveBrowser', 'Blazer', 'ShiftBrowser', 'AceAIBrowser', 'PulseBrowser')
 
 Write-Host "PUPRemover — SentinelOne auto mode"
 Write-Host ("Run: {0}   Targets: {1}" -f $stamp, ($targets -join ', '))
