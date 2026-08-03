@@ -175,6 +175,9 @@ Assert-Match $pulse 'MatchPattern' 'C:\Users\bob\AppData\Local\PulseSoftware\Pul
 Assert-Match $pulse 'MatchPattern' 'C:\Users\bob\AppData\Local\PulseSoftware\PulseBrowser\Application\140.0.7339.192\Installer\setup.exe --uninstall' $true 'uninstaller path'
 Assert-Match $pulse 'MatchPattern' 'PulseBrowserUpdaterTaskUser8F2A1C' $true 'scheduled task name'
 Assert-Match $pulse 'MatchPattern' 'PulseBrowserUpdaterTaskUser8F2A1CCore' $true 'task Core variant'
+# Real-world task name: version + {GUID} suffix must not defeat the match.
+Assert-Match $pulse 'MatchPattern' 'PulseBrowserUpdaterTaskUser133.0.6943.209{76FA60C9-7D4A-4386-8066-9DAF23217D02}' $true 'task name with version + GUID suffix'
+Assert-Match $pulse 'MatchPattern' 'PulseBrowserUpdaterTaskUser133.0.6943.209{76FA60C9-7D4A-4386-8066-9DAF23217D02} | \ | C:\Users\bob\AppData\Local\PulseSoftware\PulseBrowserUpdater\133.0.6943.209\updater.exe' $true 'full scheduled-task scan blob'
 Assert-Match $pulse 'MatchPattern' 'Pulse Browser Updater' $true 'Run value name'
 Assert-Match $pulse 'MatchPattern' 'GUID | Pulse Browser | Pulse Software | C:\Users\bob\AppData\Local\PulseSoftware\PulseBrowser' $true 'uninstall blob (publisher + location)'
 Assert-Match $pulse 'MatchPattern' 'PulseBrowser | Pulse Browser | Pulse Software |' $true 'uninstall blob by publisher only'
