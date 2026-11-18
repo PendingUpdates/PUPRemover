@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "scope": "synthetic",
+  "inventory_complete": true,
+  "profiles": [
+    {
+      "profile_id": "alice",
+      "root": "C:\\Users\\Alice"
+    }
+  ],
+  "applications": [
+    {
+      "app_id": "app-a",
+      "product_id": "org.example.audit-fixture-browser",
+      "publisher": "Example Synthetic Publisher",
+      "profile_id": "alice",
+      "install_root": "C:\\Users\\Alice\\AppData\\Local\\AuditFixtureBrowser",
+      "root_exclusive": true,
+      "user_intent": "review",
+      "evidence": {
+        "registration_product_id": "org.example.audit-fixture-browser",
+        "registration_source_id": "reg-app-a",
+        "binary_product_id": "org.example.audit-fixture-browser",
+        "binary_source_id": "bin-app-a",
+        "signer_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "executable_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "executable_path": "C:\\Users\\Alice\\AppData\\Local\\AuditFixtureBrowser\\fixture-browser.exe",
+        "resolved_install_root": "C:\\Users\\Alice\\AppData\\Local\\AuditFixtureBrowser",
+        "root_is_reparse_point": false,
+        "ancestors_unambiguous": true
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "file-a",
+      "kind": "file",
+      "path": "C:\\Users\\Alice\\AppData\\Local\\AuditFixtureBrowser\\fixture-browser.exe",
+      "resolved_path": "C:\\Users\\Alice\\AppData\\Local\\AuditFixtureBrowser\\fixture-browser.exe",
+      "profile_id": "alice",
+      "owner_app_ids": [
+        "app-a"
+      ],
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "is_reparse_point": false,
+      "hardlink_count": 1
+    },
+    {
+      "artifact_id": "unrelated-sibling",
+      "kind": "file",
+      "path": "C:\\Users\\Alice\\AppData\\Local\\AuditFixtureBrowser\\user-notes.txt",
+      "resolved_path": "C:\\Users\\Alice\\AppData\\Local\\AuditFixtureBrowser\\user-notes.txt",
+      "profile_id": "alice",
+      "owner_app_ids": [],
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "is_reparse_point": false,
+      "hardlink_count": 1
+    }
+  ]
+}
