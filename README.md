@@ -1,3 +1,5 @@
+> **Safety notice:** The legacy removal scripts below have unresolved unrelated-application targeting risks. Do not treat their historical safety claims as verified production guarantees. The separate [Pallette Clenser audit planner](audit-planner/README.md) is a synthetic-data-only, non-removing experiment; it does not scan a system or make the legacy remover safe. Do not run legacy scripts to test the planner.
+
 # PUPRemover
 
 PowerShell detection-and-removal for a family of bundled/misleading-ad PUPs
