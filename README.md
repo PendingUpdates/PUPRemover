@@ -40,3 +40,7 @@ Old root PowerShell launchers and build entry now fail closed with exit 2. Histo
 [Response Menu](https://github.com/PendingUpdates/Response-Menu) · [Planner details](audit-planner/README.md) · [Development checks](docs/development.md)
 
 The canonical repository is [PendingUpdates/Pallette-Clenser](https://github.com/PendingUpdates/Pallette-Clenser). The display name is Pallette Clenser. No release-version reset is included. JSON `schema_version: 1` is a schema identifier, not a product release version.
+
+## License
+
+Original software and documentation are provided under the [MIT License](LICENSE). See [license scope](LICENSE-SCOPE.md) for exclusions.
