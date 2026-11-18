@@ -18,4 +18,4 @@ Fixtures supply unverified claims, not live ownership evidence. Missing, ambiguo
 
 ## Scope and compatibility
 
-This addition does not change the legacy remover, its interfaces or product version. The legacy entry points remain unsafe for production and are not exercised by these tests. No repository rename, release certification, Windows test or Proxmox test is claimed.
+This addition does not change the legacy remover, its interfaces or product version. Root legacy entry points now fail closed; archived legacy source remains unsafe and is not exercised by these tests. No repository rename, release certification, Windows test or Proxmox test is claimed.
