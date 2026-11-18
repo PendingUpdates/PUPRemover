@@ -2,7 +2,9 @@
 
 ![Pallette Clenser fruit-bowl artwork](docs/assets/Pallette-Clenser.png)
 
-The breakfast menu’s **synthetic audit planner** for developing conservative application-ownership checks. This is not yet a working PUP detector or remover. No host is scanned. All real-product rules and removal capabilities are absent from the active planner.
+Audit and plan potentially unwanted app cleanup.
+
+The supported Python launcher reads supplied synthetic test inventories and flags items for human review. It does not scan hosts or remove apps. The legacy Windows scanner and remover are archived and disabled in the supported entry points.
 
 ## Requirements
 
